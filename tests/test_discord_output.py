@@ -23,6 +23,8 @@ class DiscordOutputTests(unittest.TestCase):
         self.assertIn("`!status`", message)
         self.assertIn("`!cancel`", message)
         self.assertIn("`!tail`", message)
+        self.assertIn("`!session`", message)
+        self.assertIn("`!new`", message)
         self.assertIn("`!projects`", message)
         self.assertIn("`!help`", message)
         self.assertNotIn("/projects/", message)

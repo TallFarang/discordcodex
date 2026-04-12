@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -29,6 +30,8 @@ class CodexResult:
     timed_out: bool
     cancelled: bool
     command: list[str]
+    thread_id: str | None = None
+    assistant_response: str | None = None
 
 
 class CodexRunner:
@@ -42,14 +45,11 @@ class CodexRunner:
         prompt: str,
         timeout_seconds: int | None = None,
         extra_args: list[str] | None = None,
+        session_id: str | None = None,
     ) -> CodexResult:
         started = time.monotonic()
         timeout = timeout_seconds or project.timeout_seconds
-        args = [self.codex_bin]
-        if extra_args is None:
-            args.extend(["exec", *project.codex_args, "-C", str(project.cwd)])
-        else:
-            args.extend(extra_args)
+        args = self._build_args(project, session_id=session_id, extra_args=extra_args)
         args.append(prompt)
 
         env = _codex_child_env(os.environ)
@@ -81,8 +81,46 @@ class CodexRunner:
             duration_seconds=duration,
             timed_out=timed_out,
             cancelled=cancelled,
-            command=[self.codex_bin, "exec", *project.codex_args, "-C", str(project.cwd), "<prompt redacted>"],
+            command=self._redacted_command(project, session_id=session_id),
+            thread_id=_extract_thread_id(output.decode("utf-8", errors="replace")),
+            assistant_response=_extract_agent_message(output.decode("utf-8", errors="replace")),
         )
+
+    def _build_args(
+        self,
+        project: ProjectConfig,
+        session_id: str | None,
+        extra_args: list[str] | None = None,
+    ) -> list[str]:
+        args = [self.codex_bin]
+        if extra_args:
+            args.extend(extra_args)
+        if session_id:
+            args.extend(["exec", "resume", "--json", *project.codex_args, session_id])
+        else:
+            args.extend(["exec", "--json", *project.codex_args, "-C", str(project.cwd)])
+        return args
+
+    def _redacted_command(self, project: ProjectConfig, session_id: str | None) -> list[str]:
+        if session_id:
+            return [
+                self.codex_bin,
+                "exec",
+                "resume",
+                "--json",
+                *project.codex_args,
+                session_id,
+                "<prompt redacted>",
+            ]
+        return [
+            self.codex_bin,
+            "exec",
+            "--json",
+            *project.codex_args,
+            "-C",
+            str(project.cwd),
+            "<prompt redacted>",
+        ]
 
     async def _terminate(self, process: asyncio.subprocess.Process) -> bytes:
         if process.returncode is not None:
@@ -109,3 +147,34 @@ def _codex_child_env(source: os._Environ[str] | dict[str, str]) -> dict[str, str
         if key in BLOCKED_ENV_NAMES or key.startswith(BLOCKED_ENV_PREFIXES):
             continue
     return env
+
+
+def _extract_thread_id(output: str) -> str | None:
+    for event in _json_events(output):
+        if event.get("type") == "thread.started" and event.get("thread_id"):
+            return str(event["thread_id"])
+    return None
+
+
+def _extract_agent_message(output: str) -> str | None:
+    messages: list[str] = []
+    for event in _json_events(output):
+        item = event.get("item")
+        if event.get("type") == "item.completed" and isinstance(item, dict):
+            if item.get("type") == "agent_message" and item.get("text"):
+                messages.append(str(item["text"]))
+    if messages:
+        return "\n".join(messages).strip()
+    return None
+
+
+def _json_events(output: str) -> list[dict]:
+    events = []
+    for line in output.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events

@@ -18,7 +18,23 @@ def build_prompt(
     recent_messages: list[ChannelMessage],
     user_request: str,
     include_bot_messages: bool = False,
+    resumed_session: bool = False,
 ) -> str:
+    if resumed_session:
+        return "\n".join(
+            [
+                "You are running inside DiscordCodex.",
+                "Resuming existing Codex conversation.",
+                "",
+                f"Project: {project.name}",
+                f"Working directory: {project.cwd}",
+                f"Discord channel: {channel_name}",
+                "",
+                "User request:",
+                user_request,
+            ]
+        )
+
     filtered = [
         message
         for message in recent_messages

@@ -23,6 +23,7 @@ class ProjectConfig:
     include_recent_messages: int
     codex_args: list[str]
     max_output_chars_per_message: int
+    persistent_session: bool
 
 
 @dataclass(frozen=True)
@@ -149,6 +150,9 @@ def _build_project(
     codex_args = item.get("codex_args", defaults.get("codex_args", ["--full-auto"]))
     if not isinstance(codex_args, list) or not all(isinstance(arg, str) for arg in codex_args):
         raise ValueError(f"codex_args for {name} must be a list of strings")
+    persistent_session = bool(
+        item.get("persistent_session", defaults.get("persistent_session", True))
+    )
 
     return ProjectConfig(
         channel_id=channel_id,
@@ -160,6 +164,7 @@ def _build_project(
         include_recent_messages=include_recent_messages,
         codex_args=list(codex_args),
         max_output_chars_per_message=max_output_chars,
+        persistent_session=persistent_session,
     )
 
 

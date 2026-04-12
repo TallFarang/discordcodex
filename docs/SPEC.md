@@ -59,15 +59,20 @@ Discord message
 
 ### Default Mode
 
-The default execution model is stateless per message:
+The default execution model is one persistent Codex session per configured Discord channel.
+The first message starts a session:
 
 ```bash
-codex exec -C <project.cwd> <prompt>
+codex exec --json -C <project.cwd> <prompt>
 ```
 
-Each Discord message starts a new Codex CLI run. The bot may include recent Discord channel history in the prompt to provide conversational continuity.
+Later messages resume the stored session:
 
-This is preferred for v1 because it is easier to supervise, cancel, log, and recover from failure than a long-lived interactive Codex process.
+```bash
+codex exec resume --json <thread_id> <prompt>
+```
+
+DiscordCodex stores the Codex thread id under the local data directory. The bot may include recent Discord channel history only when creating a new session, so old Discord output is not repeatedly fed back into Codex. Project config may set `persistent_session` to `false` for stateless per-message runs.
 
 ### Permissions Mode
 
@@ -127,6 +132,8 @@ Required v1 commands:
 !status
 !cancel
 !tail
+!session
+!new
 !projects
 !help
 ```
@@ -136,6 +143,8 @@ Command behavior:
 - `!status`: show whether the current channel has a running Codex job.
 - `!cancel`: terminate the current channel's running Codex job.
 - `!tail`: show the last part of the current channel's latest log.
+- `!session`: show whether the current channel has a stored Codex session.
+- `!new`: clear the current channel's stored Codex session so the next message starts fresh.
 - `!projects`: list configured projects visible to the current user.
 - `!help`: show usage and control commands.
 
@@ -226,6 +235,7 @@ Example `config/projects.json`:
   "defaults": {
     "timeout_seconds": 1800,
     "include_recent_messages": 10,
+    "persistent_session": true,
     "codex_args": ["--full-auto"],
     "max_output_chars_per_message": 1800
   },
@@ -253,6 +263,7 @@ Example `config/projects.json`:
 - If `codex_home` is set, the bot creates it when missing and sets `CODEX_HOME` for that run.
 - If `codex_home` cannot be created or is not writable, the project config is invalid.
 - Sharing one `codex_home` across multiple projects is allowed only when explicitly configured by using the same path in those projects.
+- `persistent_session` defaults to `true`.
 - Relative paths are resolved relative to the config file directory.
 - The project config must not contain secrets.
 
@@ -279,7 +290,7 @@ For each run, DiscordCodex builds a prompt with:
 - The current user message.
 - The project name.
 - The channel name.
-- Optional recent channel messages.
+- Optional recent channel messages when starting a new Codex session.
 - Optional project-specific instructions from config.
 
 The bot should clearly separate metadata from the user's instruction.
@@ -301,6 +312,8 @@ User request:
 ```
 
 Recent context must exclude bot output unless configured otherwise, to avoid feeding long logs back into Codex repeatedly.
+
+When resuming an existing Codex session, DiscordCodex sends only the new user request and short channel metadata. The previous coding conversation is provided by Codex's stored session.
 
 ## Logging
 

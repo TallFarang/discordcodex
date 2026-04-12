@@ -10,6 +10,7 @@ from .discord_output import chunk_output, extract_assistant_response, help_messa
 from .locks import JobRegistry
 from .logging_store import LoggingStore
 from .prompt import ChannelMessage, build_prompt
+from .session_store import ChannelSession, SessionStore
 
 
 async def run_bot(settings: Settings) -> None:
@@ -39,6 +40,7 @@ class DiscordCodexClient:
         self.jobs = JobRegistry(settings.max_concurrent_jobs_global)
         self.runner = CodexRunner(settings.codex_bin, settings.cancel_grace_seconds)
         self.logs = LoggingStore(settings.data_dir)
+        self.sessions = SessionStore(settings.data_dir)
         self._sent_startup_guides = False
         self._bind_events()
 
@@ -109,8 +111,33 @@ class DiscordCodexClient:
             await message.channel.send(f"Configured projects: {names}")
         elif command == "!tail":
             await self._send_tail(message)
+        elif command == "!session":
+            await self._send_session(message)
+        elif command == "!new":
+            await self._clear_session(message)
         elif command == "!help":
             await message.channel.send(help_message())
+
+    async def _send_session(self, message) -> None:
+        project = self.settings.channels.get(str(message.channel.id))
+        if not project:
+            await message.channel.send("This channel is not configured for a project.")
+            return
+        session = self.sessions.load(str(message.channel.id))
+        if not session:
+            await message.channel.send(f"No Codex session is stored for `{project.name}` yet.")
+            return
+        await message.channel.send(
+            f"Codex session for `{project.name}`: `{session.thread_id[:8]}`. Use `!new` to start fresh."
+        )
+
+    async def _clear_session(self, message) -> None:
+        project = self.settings.channels.get(str(message.channel.id))
+        if not project:
+            await message.channel.send("This channel is not configured for a project.")
+            return
+        self.sessions.clear(str(message.channel.id))
+        await message.channel.send(f"Started a fresh Codex session for `{project.name}`. Send a message to begin.")
 
     async def _send_startup_guides(self) -> None:
         if self._sent_startup_guides:
@@ -139,13 +166,26 @@ class DiscordCodexClient:
         paths = self.logs.create_run_paths(project.name)
         started = datetime.now(timezone.utc)
         await message.channel.send(f"Codex is working on `{project.name}`...")
-        recent = await self._recent_messages(message, project.include_recent_messages)
-        prompt = build_prompt(project, message.channel.name, recent, content)
+        stored_session = self.sessions.load(str(message.channel.id)) if project.persistent_session else None
+        recent = [] if stored_session else await self._recent_messages(message, project.include_recent_messages)
+        prompt = build_prompt(
+            project,
+            message.channel.name,
+            recent,
+            content,
+            resumed_session=stored_session is not None,
+        )
         paths.prompt.write_text(prompt, encoding="utf-8")
-        result = await self.runner.run(project=project, prompt=prompt)
+        result = await self.runner.run(
+            project=project,
+            prompt=prompt,
+            session_id=stored_session.thread_id if stored_session else None,
+        )
         paths.log.write_text(result.output, encoding="utf-8")
 
-        response = extract_assistant_response(result.output) if result.exit_code == 0 else None
+        response = result.assistant_response or (
+            extract_assistant_response(result.output) if result.exit_code == 0 else None
+        )
         if response:
             chunks, truncated = chunk_output(
                 response,
@@ -173,8 +213,27 @@ class DiscordCodexClient:
                 "exit_code": result.exit_code,
                 "timed_out": result.timed_out,
                 "cancelled": result.cancelled,
+                "thread_id": result.thread_id or (stored_session.thread_id if stored_session else None),
+                "resumed_session": stored_session is not None,
             },
         )
+        if project.persistent_session and result.exit_code == 0 and not result.cancelled and not result.timed_out:
+            thread_id = result.thread_id or (stored_session.thread_id if stored_session else None)
+            if thread_id:
+                now = datetime.now(timezone.utc).isoformat()
+                self.sessions.save(
+                    ChannelSession(
+                        channel_id=str(message.channel.id),
+                        project_safe_name=project.safe_name,
+                        thread_id=thread_id,
+                        created_at=stored_session.created_at if stored_session else started.isoformat(),
+                        updated_at=now,
+                        last_log_path=str(paths.log),
+                    )
+                )
+
+        if stored_session and result.exit_code != 0 and not result.cancelled and not result.timed_out:
+            await message.channel.send("Codex could not resume the stored session. Use `!new` to start fresh.")
         if result.exit_code != 0 or result.cancelled or result.timed_out:
             await message.channel.send(
                 summarize_result(

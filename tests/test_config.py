@@ -57,7 +57,46 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(channel.name, "demo")
             self.assertEqual(channel.cwd, project.resolve())
             self.assertTrue(channel.codex_home.exists())
+            self.assertTrue(channel.persistent_session)
             self.assertEqual(settings.allowed_user_ids, {TEST_USER_ID, TEST_OTHER_USER_ID})
+
+    def test_loads_project_level_persistent_session_setting(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            project.mkdir()
+            data = root / "data"
+            codex_bin = root / "codex"
+            codex_bin.write_text("#!/bin/sh\nexit 0\n")
+            codex_bin.chmod(0o755)
+            config_path = root / "projects.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "channels": {
+                            TEST_CHANNEL_ID: {
+                                "name": "demo",
+                                "cwd": "project",
+                                "persistent_session": False,
+                            }
+                        },
+                    }
+                )
+            )
+
+            env = {
+                "DISCORD_TOKEN": "test-discord-token",
+                "ALLOWED_GUILD_ID": TEST_GUILD_ID,
+                "ALLOWED_USER_IDS": TEST_USER_ID,
+                "DISCORDCODEX_CONFIG": str(config_path),
+                "DISCORDCODEX_DATA_DIR": str(data),
+                "CODEX_BIN": str(codex_bin),
+            }
+
+            with patch.dict(os.environ, env, clear=True):
+                settings = load_settings()
+
+            self.assertFalse(settings.channels[TEST_CHANNEL_ID].persistent_session)
 
     def test_rejects_duplicate_normalized_project_names(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -8,9 +8,10 @@ The bot is intended for private servers and trusted users. It is a remote code e
 
 - Map one Discord channel to one project directory.
 - Run Codex headlessly with `codex exec`.
+- Keep one persistent Codex session per Discord channel.
 - Keep raw Codex transcripts and prompts in local logs.
 - Send concise Codex replies back to Discord.
-- Use `!status`, `!cancel`, `!tail`, `!projects`, and `!help`.
+- Use `!status`, `!cancel`, `!tail`, `!session`, `!new`, `!projects`, and `!help`.
 - Run locally with Python or in Docker.
 - Optionally configure GitHub credentials from environment variables for private repo access.
 
@@ -65,13 +66,16 @@ Map Discord channels to projects in `config/projects.json`:
     "<DISCORD_CHANNEL_ID>": {
       "name": "webapp",
       "cwd": "/projects/webapp",
-      "codex_home": "/data/codex-home/webapp"
+      "codex_home": "/data/codex-home/webapp",
+      "persistent_session": true
     }
   }
 }
 ```
 
 `codex_home` should point to a writable directory that contains Codex auth/config for that project.
+
+By default, each channel keeps one Codex conversation session. The first message starts a new session and later messages resume it with `codex exec resume`. Set `persistent_session` to `false` on a project to keep stateless per-message runs.
 
 ## Codex Auth
 
@@ -137,6 +141,8 @@ The container expects:
 - `!status`: show whether Codex is running in the current channel.
 - `!cancel`: request cancellation for the current channel's active run.
 - `!tail`: show the tail of the latest raw log for the current channel.
+- `!session`: show the current channel's stored Codex session.
+- `!new`: clear the current channel's stored Codex session.
 - `!projects`: list configured project names.
 - `!help`: show the usage guide.
 
@@ -149,6 +155,7 @@ For each run, DiscordCodex stores:
 - The prompt sent to Codex.
 - The raw Codex transcript.
 - Redacted metadata about the run.
+- Persistent session metadata under the local data directory.
 
 Use `!tail` when Discord output is too short and you need the raw transcript.
 

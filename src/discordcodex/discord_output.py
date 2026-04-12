@@ -12,6 +12,8 @@ def help_message() -> str:
             "`!status` - check if Codex is running",
             "`!cancel` - stop the current run",
             "`!tail` - show the latest raw log",
+            "`!session` - show this channel's Codex session",
+            "`!new` - clear this channel's Codex session",
             "`!projects` - list configured projects",
             "`!help` - show this guide",
         ]

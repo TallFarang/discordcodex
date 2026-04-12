@@ -2,6 +2,7 @@
   "defaults": {
     "timeout_seconds": 1800,
     "include_recent_messages": 10,
+    "persistent_session": true,
     "codex_args": ["--full-auto"],
     "max_output_chars_per_message": 1800,
     "max_output_chunks": 4,
