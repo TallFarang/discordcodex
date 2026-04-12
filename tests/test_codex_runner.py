@@ -27,7 +27,7 @@ class CodexRunnerTests(unittest.TestCase):
                 "print('cwd=' + os.getcwd())\n"
                 "print('args=' + ' '.join(sys.argv[1:-1]))\n"
                 "print('prompt=' + sys.argv[-1])\n"
-                "for name in ('CODEX_HOME', 'DISCORD_TOKEN', 'GITHUB_TOKEN', 'GIT_CONFIG_GLOBAL'):\n"
+                "for name in ('CODEX_HOME', 'DISCORD_TOKEN', 'GITHUB_TOKEN', 'DISCORDCODEX_GITHUB_API_TOKEN', 'GIT_CONFIG_GLOBAL', 'GH_TOKEN'):\n"
                 "    print(f'{name}=' + os.environ.get(name, '<missing>'))\n"
             )
             project = ProjectConfig(
@@ -47,6 +47,8 @@ class CodexRunnerTests(unittest.TestCase):
                 {
                     "DISCORD_TOKEN": "test-discord-token",
                     "GITHUB_TOKEN": "test-github-token",
+                    "DISCORDCODEX_GITHUB_API_TOKEN": "test-discordcodex-api-token",
+                    "GH_TOKEN": "test-gh-token",
                     "GIT_CONFIG_GLOBAL": str(root / "gitconfig"),
                 },
                 clear=False,
@@ -66,8 +68,10 @@ class CodexRunnerTests(unittest.TestCase):
             self.assertIn("prompt=hello", result.output)
             self.assertIn(f"CODEX_HOME={root / 'codex-home'}", result.output)
             self.assertIn(f"GIT_CONFIG_GLOBAL={root / 'gitconfig'}", result.output)
+            self.assertIn("GH_TOKEN=test-gh-token", result.output)
             self.assertIn("DISCORD_TOKEN=<missing>", result.output)
             self.assertIn("GITHUB_TOKEN=<missing>", result.output)
+            self.assertIn("DISCORDCODEX_GITHUB_API_TOKEN=<missing>", result.output)
 
     def test_parses_json_thread_id_and_assistant_response(self):
         asyncio.run(self._run_fake_codex_json())

@@ -218,9 +218,16 @@ DISCORDCODEX_CONFIG
 DISCORDCODEX_DATA_DIR
 DISCORDCODEX_LOG_LEVEL
 CODEX_BIN
-GITHUB_USERNAME
-GITHUB_TOKEN
+DISCORDCODEX_GIT_USERNAME
+DISCORDCODEX_GIT_CREDENTIAL_TOKEN
+DISCORDCODEX_GIT_CREDENTIAL_TOKEN_FILE
+DISCORDCODEX_GITHUB_API_TOKEN
+DISCORDCODEX_GITHUB_API_TOKEN_FILE
 ```
+
+`DISCORDCODEX_GIT_CREDENTIAL_TOKEN` is used by the Docker entrypoint to create Git HTTPS credentials, then unset before DiscordCodex starts. `DISCORDCODEX_GITHUB_API_TOKEN` is exported internally as `GH_TOKEN` so Codex can use the GitHub CLI for read-only GitHub API access.
+
+The `_FILE` variants read the first line from a mounted token file. Docker deployments should prefer file inputs for GitHub tokens so token values are not stored in Docker's configured environment.
 
 ### Discord Intents
 
@@ -401,6 +408,7 @@ The container image should include:
 - Python runtime.
 - DiscordCodex package.
 - Codex CLI.
+- GitHub CLI.
 - Git.
 - Common shell utilities.
 
@@ -418,11 +426,13 @@ services:
       - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
       - DISCORDCODEX_CONFIG=/app/config/projects.json
       - DISCORDCODEX_DATA_DIR=/data
-      - GITHUB_USERNAME=${GITHUB_USERNAME}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - DISCORDCODEX_GIT_USERNAME=${DISCORDCODEX_GIT_USERNAME}
+      - DISCORDCODEX_GIT_CREDENTIAL_TOKEN_FILE=/run/secrets/discordcodex_git_token
+      - DISCORDCODEX_GITHUB_API_TOKEN_FILE=/run/secrets/discordcodex_github_api_token
     volumes:
       - ./config:/app/config:ro
       - ./data:/data
+      - ./secrets:/run/secrets:ro
       - /path/to/projects:/projects
 ```
 

@@ -52,11 +52,20 @@ DISCORDCODEX_LOG_LEVEL=INFO
 Optional GitHub credentials:
 
 ```bash
-GITHUB_USERNAME=
-GITHUB_TOKEN=
+DISCORDCODEX_GIT_USERNAME=
+DISCORDCODEX_GIT_CREDENTIAL_TOKEN=
+DISCORDCODEX_GIT_CREDENTIAL_TOKEN_FILE=
+DISCORDCODEX_GITHUB_API_TOKEN=
+DISCORDCODEX_GITHUB_API_TOKEN_FILE=
 ```
 
-When `GITHUB_TOKEN` is set, the Docker entrypoint writes a Git credential store under `/data` and configures Git with `GIT_CONFIG_GLOBAL`. This is useful for private GitHub repos mounted into the container.
+`DISCORDCODEX_GIT_CREDENTIAL_TOKEN` is used only at container startup to write a Git credential store under `/data` and configure Git with `GIT_CONFIG_GLOBAL`. This is useful for private GitHub repos mounted into the container. The raw token is unset before DiscordCodex starts. `DISCORDCODEX_GIT_USERNAME` defaults to `x-access-token` when omitted.
+
+`DISCORDCODEX_GITHUB_API_TOKEN` is exported internally as `GH_TOKEN` so the GitHub CLI can read GitHub API data such as issues and pull requests. This token is intentionally available to Codex subprocesses. Use a fine-grained read-only token scoped only to the repositories Codex should inspect.
+
+For Docker, prefer the `_FILE` variants and mount token files read-only. This keeps token values out of Docker's configured environment while still letting the entrypoint read them at startup. Each file should contain only the token value on the first line.
+
+For compatibility, `GITHUB_USERNAME`, `GITHUB_TOKEN`, and `GH_TOKEN` are also accepted, but the `DISCORDCODEX_*` names are clearer for new installs.
 
 Map Discord channels to projects in `config/projects.json`:
 
@@ -117,11 +126,17 @@ cp docker-compose.example.yml docker-compose.yml
 Edit the project mount in `docker-compose.yml`:
 
 ```yaml
+environment:
+  DISCORDCODEX_GIT_CREDENTIAL_TOKEN_FILE: /run/secrets/discordcodex_git_token
+  DISCORDCODEX_GITHUB_API_TOKEN_FILE: /run/secrets/discordcodex_github_api_token
 volumes:
   - ./config:/config:ro
   - ./data:/data
+  - ./secrets:/run/secrets:ro
   - /path/to/projects:/projects
 ```
+
+Only add the `_FILE` environment entries for token files that exist.
 
 Build and start:
 
@@ -165,5 +180,7 @@ Use `!tail` when Discord output is too short and you need the raw transcript.
 - Allow only trusted Discord user IDs.
 - Mount only project directories the bot should edit.
 - Keep `.env`, Codex auth files, and generated Git credentials out of Git.
-- DiscordCodex strips bot/runtime secrets from the environment before launching `codex exec`. If Git credentials are configured through the Docker entrypoint, Codex receives `GIT_CONFIG_GLOBAL` so Git can use the generated credential helper without inheriting the raw `GITHUB_TOKEN` environment variable.
+- DiscordCodex strips bot/runtime secrets from the environment before launching `codex exec`. If Git credentials are configured through the Docker entrypoint, Codex receives `GIT_CONFIG_GLOBAL` so Git can use the generated credential helper without inheriting the raw Git credential token.
+- If `DISCORDCODEX_GITHUB_API_TOKEN` is configured, the entrypoint exposes it to Codex as `GH_TOKEN` for GitHub CLI/API reads. Prefer fine-grained read-only repository tokens.
+- In Docker, prefer `DISCORDCODEX_GIT_CREDENTIAL_TOKEN_FILE` and `DISCORDCODEX_GITHUB_API_TOKEN_FILE` so Docker inspect and exec sessions do not receive token values through the configured container environment.
 - Rotate Discord and GitHub tokens if they are pasted into chat, logs, or terminals.
