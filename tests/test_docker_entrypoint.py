@@ -22,7 +22,12 @@ class DockerEntrypointTests(unittest.TestCase):
             )
 
             result = subprocess.run(
-                [str(ROOT / "docker-entrypoint.sh"), "sh", "-c", "printf '%s' \"$GIT_CONFIG_GLOBAL\""],
+                [
+                    str(ROOT / "docker-entrypoint.sh"),
+                    "sh",
+                    "-c",
+                    "printf 'git=%s token=%s' \"$GIT_CONFIG_GLOBAL\" \"${GITHUB_TOKEN:-<missing>}\"",
+                ],
                 env=env,
                 text=True,
                 capture_output=True,
@@ -39,7 +44,7 @@ class DockerEntrypointTests(unittest.TestCase):
                 f"helper = store --file {credentials}",
                 git_config.read_text(encoding="utf-8"),
             )
-            self.assertEqual(result.stdout, str(git_config))
+            self.assertEqual(result.stdout, f"git={git_config} token=<missing>")
 
 
 if __name__ == "__main__":

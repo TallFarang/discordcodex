@@ -15,6 +15,7 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
 	helper = store --file $GIT_CREDENTIALS_FILE
 EOF
     export GIT_CONFIG_GLOBAL="$GIT_CONFIG_FILE"
+    unset GITHUB_TOKEN
 fi
 
 exec "$@"

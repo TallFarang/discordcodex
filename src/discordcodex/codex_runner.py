@@ -7,6 +7,19 @@ from dataclasses import dataclass
 
 from .config import ProjectConfig
 
+BLOCKED_ENV_PREFIXES = ("ALLOWED_", "DISCORD", "DISCORDCODEX_")
+BLOCKED_ENV_NAMES = {"GITHUB_TOKEN"}
+PRESERVED_ENV_NAMES = {
+    "GIT_CONFIG_GLOBAL",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "PATH",
+    "SSL_CERT_FILE",
+    "TMPDIR",
+    "TZ",
+}
+
 
 @dataclass(frozen=True)
 class CodexResult:
@@ -39,7 +52,7 @@ class CodexRunner:
             args.extend(extra_args)
         args.append(prompt)
 
-        env = os.environ.copy()
+        env = _codex_child_env(os.environ)
         if project.codex_home:
             env["CODEX_HOME"] = str(project.codex_home)
 
@@ -85,3 +98,14 @@ class CodexRunner:
             process.kill()
             output, _ = await process.communicate()
             return output
+
+
+def _codex_child_env(source: os._Environ[str] | dict[str, str]) -> dict[str, str]:
+    env: dict[str, str] = {}
+    for key, value in source.items():
+        if key in PRESERVED_ENV_NAMES or key.startswith("LC_"):
+            env[key] = value
+            continue
+        if key in BLOCKED_ENV_NAMES or key.startswith(BLOCKED_ENV_PREFIXES):
+            continue
+    return env

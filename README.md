@@ -158,4 +158,5 @@ Use `!tail` when Discord output is too short and you need the raw transcript.
 - Allow only trusted Discord user IDs.
 - Mount only project directories the bot should edit.
 - Keep `.env`, Codex auth files, and generated Git credentials out of Git.
+- DiscordCodex strips bot/runtime secrets from the environment before launching `codex exec`. If Git credentials are configured through the Docker entrypoint, Codex receives `GIT_CONFIG_GLOBAL` so Git can use the generated credential helper without inheriting the raw `GITHUB_TOKEN` environment variable.
 - Rotate Discord and GitHub tokens if they are pasted into chat, logs, or terminals.
