@@ -202,12 +202,6 @@ ALLOWED_GUILD_ID
 ALLOWED_USER_IDS
 ```
 
-Usually required:
-
-```text
-OPENAI_API_KEY
-```
-
 Optional:
 
 ```text
@@ -215,6 +209,8 @@ DISCORDCODEX_CONFIG
 DISCORDCODEX_DATA_DIR
 DISCORDCODEX_LOG_LEVEL
 CODEX_BIN
+GITHUB_USERNAME
+GITHUB_TOKEN
 ```
 
 ### Discord Intents
@@ -405,11 +401,12 @@ services:
     restart: unless-stopped
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ALLOWED_GUILD_ID=${ALLOWED_GUILD_ID}
       - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
       - DISCORDCODEX_CONFIG=/app/config/projects.json
       - DISCORDCODEX_DATA_DIR=/data
+      - GITHUB_USERNAME=${GITHUB_USERNAME}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
     volumes:
       - ./config:/app/config:ro
       - ./data:/data

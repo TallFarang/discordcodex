@@ -1,8 +1,92 @@
 # DiscordCodex
 
-DiscordCodex is a self-hosted Discord bot that maps Discord project channels to local Codex CLI runs. Every normal message from an allowed user in a configured channel starts a stateless `codex exec` process in that channel's project directory.
+DiscordCodex is a self-hosted Discord bot for running Codex CLI from Discord. Map Discord channels to local project directories, then send a normal message in a mapped channel to start a `codex exec` run for that project.
 
-## Install
+The bot is intended for private servers and trusted users. It is a remote code execution bridge.
+
+## Features
+
+- Map one Discord channel to one project directory.
+- Run Codex headlessly with `codex exec`.
+- Keep raw Codex transcripts and prompts in local logs.
+- Send concise Codex replies back to Discord.
+- Use `!status`, `!cancel`, `!tail`, `!projects`, and `!help`.
+- Run locally with Python or in Docker.
+- Optionally configure GitHub credentials from environment variables for private repo access.
+
+## Discord Setup
+
+Create a Discord application and bot in the Discord Developer Portal.
+
+Required bot settings:
+
+- Enable `Message Content Intent`.
+- Keep the bot in a private server.
+- Invite it with permissions to view channels, send messages, and read message history.
+
+You also need these IDs from Discord developer mode:
+
+- Guild/server ID.
+- Allowed user ID or comma-separated user IDs.
+- Channel IDs for each project channel.
+
+## Configuration
+
+Copy the example files:
+
+```bash
+cp .env.example .env
+cp config/projects.example.json config/projects.json
+```
+
+Set Discord credentials in `.env`:
+
+```bash
+DISCORD_TOKEN=
+ALLOWED_GUILD_ID=
+ALLOWED_USER_IDS=
+DISCORDCODEX_LOG_LEVEL=INFO
+```
+
+Optional GitHub credentials:
+
+```bash
+GITHUB_USERNAME=
+GITHUB_TOKEN=
+```
+
+When `GITHUB_TOKEN` is set, the Docker entrypoint writes a Git credential store under `/data` and configures Git with `GIT_CONFIG_GLOBAL`. This is useful for private GitHub repos mounted into the container.
+
+Map Discord channels to projects in `config/projects.json`:
+
+```json
+{
+  "channels": {
+    "111111111111111111": {
+      "name": "webapp",
+      "cwd": "/projects/webapp",
+      "codex_home": "/data/codex-home/webapp"
+    }
+  }
+}
+```
+
+`codex_home` should point to a writable directory that contains Codex auth/config for that project.
+
+## Codex Auth
+
+DiscordCodex does not require an OpenAI API key. It runs the Codex CLI, so authentication is whatever Codex CLI supports in its `CODEX_HOME`.
+
+For headless Docker use:
+
+1. Authenticate Codex locally.
+2. Configure Codex for file credential storage.
+3. Copy the Codex auth/config files into the mounted `codex_home`.
+4. Treat `auth.json` like a password.
+
+## Run Locally
+
+Install the package:
 
 ```bash
 python3 -m venv .venv
@@ -10,58 +94,32 @@ python3 -m venv .venv
 pip install -e .
 ```
 
-The host also needs the Codex CLI installed and authenticated. Set `CODEX_BIN` if `codex` is not on `PATH`.
-
-## Discord Setup
-
-Create a Discord bot application, add it to your private server, and enable the Message Content Intent in the Discord Developer Portal. The bot needs permission to read messages, send messages, read message history, and attach files if you want log uploads later.
-
-## Configure
-
-Copy `config/projects.example.json` to `config/projects.json` and update channel IDs and paths.
-
-Required environment variables:
-
-```bash
-export DISCORD_TOKEN="..."
-export ALLOWED_GUILD_ID="123456789012345678"
-export ALLOWED_USER_IDS="123456789012345678,234567890123456789"
-export OPENAI_API_KEY="..."
-```
-
-Optional environment variables:
-
-```bash
-export DISCORDCODEX_CONFIG="config/projects.json"
-export DISCORDCODEX_DATA_DIR="data"
-export CODEX_BIN="codex"
-```
-
-## Run
+Run the bot:
 
 ```bash
 discordcodex --config config/projects.json
 ```
 
-Or without installing the console script:
+The host must also have Codex CLI installed and authenticated. Set `CODEX_BIN` if `codex` is not on `PATH`.
+
+## Run With Docker
+
+Copy the Docker Compose example:
 
 ```bash
-PYTHONPATH=src python3 -m discordcodex --config config/projects.json
-```
-
-## Docker
-
-The Docker image includes DiscordCodex and the Codex CLI. Copy the example files and edit them for your host:
-
-```bash
-cp .env.example .env
-cp config/projects.example.json config/projects.json
 cp docker-compose.example.yml docker-compose.yml
 ```
 
-Edit `.env`, `config/projects.json`, and the project mount in `docker-compose.yml`.
+Edit the project mount in `docker-compose.yml`:
 
-Build and run:
+```yaml
+volumes:
+  - ./config:/config:ro
+  - ./data:/data
+  - /path/to/projects:/projects
+```
+
+Build and start:
 
 ```bash
 docker compose up -d --build
@@ -70,22 +128,34 @@ docker compose logs -f discordcodex
 
 The container expects:
 
-- `/config/projects.json` for project/channel mappings.
-- `/data` for DiscordCodex logs and per-project Codex homes.
-- `/projects` or another host-mounted directory containing the workspaces Codex may edit.
+- `/config/projects.json` for channel mappings.
+- `/data` for logs, Codex homes, and generated Git credentials.
+- `/projects` for project workspaces.
 
-If `GITHUB_TOKEN` is set, the container writes a Git credential store under `/data` at startup and points Git at it with `GIT_CONFIG_GLOBAL`. Set `GITHUB_USERNAME` to your GitHub username, or omit it to use `x-access-token`.
+## Discord Commands
 
-For headless account auth, configure Codex to use file credential storage and mount the relevant `CODEX_HOME` under `/data`. The Codex auth cache contains access tokens; treat it like a password and never commit it.
+- `!status`: show whether Codex is running in the current channel.
+- `!cancel`: request cancellation for the current channel's active run.
+- `!tail`: show the tail of the latest raw log for the current channel.
+- `!projects`: list configured project names.
+- `!help`: show the usage guide.
 
-## Commands
+Any non-command message in a configured channel starts a Codex run.
 
-- `!status`: show whether the current channel has a running Codex job.
-- `!cancel`: request cancellation for the current channel's running job.
-- `!tail`: show the tail of the current channel's latest log.
-- `!projects`: list configured projects.
-- `!help`: show commands.
+## Logs
+
+For each run, DiscordCodex stores:
+
+- The prompt sent to Codex.
+- The raw Codex transcript.
+- Redacted metadata about the run.
+
+Use `!tail` when Discord output is too short and you need the raw transcript.
 
 ## Safety
 
-This is a remote code execution bridge. Use private Discord channels, allowlist only trusted users, run the bot under a dedicated OS user, and mount only the project directories the bot needs.
+- Use private Discord channels.
+- Allow only trusted Discord user IDs.
+- Mount only project directories the bot should edit.
+- Keep `.env`, Codex auth files, and generated Git credentials out of Git.
+- Rotate Discord and GitHub tokens if they are pasted into chat, logs, or terminals.
