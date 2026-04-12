@@ -1,6 +1,21 @@
 from __future__ import annotations
 
 
+def extract_assistant_response(text: str) -> str | None:
+    lines = text.splitlines()
+    codex_indices = [index for index, line in enumerate(lines) if line.strip() == "codex"]
+    for index in reversed(codex_indices):
+        answer_lines: list[str] = []
+        for line in lines[index + 1 :]:
+            if line.strip() == "tokens used":
+                break
+            answer_lines.append(line)
+        answer = "\n".join(answer_lines).strip()
+        if answer:
+            return answer
+    return None
+
+
 def chunk_output(text: str, max_chars: int = 1800, max_chunks: int = 4) -> tuple[list[str], bool]:
     if max_chars <= 0:
         raise ValueError("max_chars must be positive")
@@ -27,13 +42,5 @@ def summarize_result(
     elif timed_out:
         headline = f"Codex timed out for `{project_name}`."
     else:
-        headline = f"Codex finished for `{project_name}`."
-    duration = f"{duration_seconds:.0f}s"
-    return "\n".join(
-        [
-            headline,
-            f"Exit code: {exit_code if exit_code is not None else 'unknown'}",
-            f"Duration: {duration}",
-            f"Log: {log_path}",
-        ]
-    )
+        headline = f"Codex failed for `{project_name}`."
+    return f"{headline} Use `!tail` for details."

@@ -1,6 +1,6 @@
 import unittest
 
-from discordcodex.discord_output import chunk_output, summarize_result
+from discordcodex.discord_output import chunk_output, extract_assistant_response, summarize_result
 
 
 class DiscordOutputTests(unittest.TestCase):
@@ -20,9 +20,30 @@ class DiscordOutputTests(unittest.TestCase):
             timed_out=False,
         )
 
-        self.assertIn("Codex cancelled for `demo`.", summary)
-        self.assertIn("Exit code: 143", summary)
-        self.assertIn("Duration: 3s", summary)
+        self.assertEqual(summary, "Codex cancelled for `demo`. Use `!tail` for details.")
+
+    def test_extract_assistant_response_from_codex_transcript(self):
+        transcript = """Reading additional input from stdin...
+OpenAI Codex v0.120.0 (research preview)
+--------
+user
+Hey
+warning: Codex could not find bubblewrap on PATH.
+codex
+Hey. What do you want to work on in /projects/discordcodex?
+tokens used
+320
+"""
+
+        self.assertEqual(
+            extract_assistant_response(transcript),
+            "Hey. What do you want to work on in /projects/discordcodex?",
+        )
+
+    def test_extract_assistant_response_returns_none_without_clean_answer(self):
+        transcript = "OpenAI Codex v0.120.0\nuser\nHey\ntokens used\n320\n"
+
+        self.assertIsNone(extract_assistant_response(transcript))
 
 
 if __name__ == "__main__":

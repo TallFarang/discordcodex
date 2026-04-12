@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .codex_runner import CodexRunner
 from .config import ProjectConfig, Settings
-from .discord_output import chunk_output, summarize_result
+from .discord_output import chunk_output, extract_assistant_response, summarize_result
 from .locks import JobRegistry
 from .logging_store import LoggingStore
 from .prompt import ChannelMessage, build_prompt
@@ -126,22 +126,26 @@ class DiscordCodexClient:
     async def _run_codex_for_message(self, message, project: ProjectConfig, content: str) -> None:
         paths = self.logs.create_run_paths(project.name)
         started = datetime.now(timezone.utc)
-        await message.channel.send(f"Codex started for project `{project.name}`.")
+        await message.channel.send(f"Codex is working on `{project.name}`...")
         recent = await self._recent_messages(message, project.include_recent_messages)
         prompt = build_prompt(project, message.channel.name, recent, content)
         paths.prompt.write_text(prompt, encoding="utf-8")
         result = await self.runner.run(project=project, prompt=prompt)
         paths.log.write_text(result.output, encoding="utf-8")
 
-        chunks, truncated = chunk_output(
-            result.output,
-            max_chars=project.max_output_chars_per_message,
-            max_chunks=self.settings.max_output_chunks,
-        )
-        for chunk in chunks:
-            await message.channel.send(chunk)
-        if truncated:
-            await message.channel.send(f"Output truncated. Full log: {paths.log}")
+        response = extract_assistant_response(result.output) if result.exit_code == 0 else None
+        if response:
+            chunks, truncated = chunk_output(
+                response,
+                max_chars=project.max_output_chars_per_message,
+                max_chunks=self.settings.max_output_chunks,
+            )
+            for chunk in chunks:
+                await message.channel.send(chunk)
+            if truncated:
+                await message.channel.send("Response truncated. Use `!tail` for details.")
+        elif result.exit_code == 0:
+            await message.channel.send("Codex finished, but I could not extract a clean response. Use `!tail` for details.")
 
         self.logs.write_metadata(
             paths,
@@ -159,16 +163,17 @@ class DiscordCodexClient:
                 "cancelled": result.cancelled,
             },
         )
-        await message.channel.send(
-            summarize_result(
-                project.name,
-                result.exit_code,
-                result.duration_seconds,
-                str(paths.log),
-                cancelled=result.cancelled,
-                timed_out=result.timed_out,
+        if result.exit_code != 0 or result.cancelled or result.timed_out:
+            await message.channel.send(
+                summarize_result(
+                    project.name,
+                    result.exit_code,
+                    result.duration_seconds,
+                    str(paths.log),
+                    cancelled=result.cancelled,
+                    timed_out=result.timed_out,
+                )
             )
-        )
 
     async def _recent_messages(self, message, limit: int) -> list[ChannelMessage]:
         if limit <= 0:
