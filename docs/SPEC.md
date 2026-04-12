@@ -4,7 +4,7 @@
 
 DiscordCodex is a self-hosted Discord bot that connects Discord project channels to local Codex CLI executions. Each configured Discord channel maps to a project workspace. Messages in that channel are treated as coding instructions for that project, and the bot runs Codex in the mapped working directory.
 
-The tool is intended to be open source and portable across macOS, Linux, and containerized environments. It must not assume QNAP, NAS-specific paths, or Docker-only deployment.
+The tool is intended to be open source and portable across macOS, Linux, and containerized environments. It must not assume host-specific paths or Docker-only deployment.
 
 ## Goals
 
@@ -230,12 +230,12 @@ Example `config/projects.json`:
     "max_output_chars_per_message": 1800
   },
   "channels": {
-    "111111111111111111": {
+    "<DISCORD_CHANNEL_ID_WEBAPP>": {
       "name": "webapp",
       "cwd": "/projects/webapp",
       "codex_home": "/data/codex-home/webapp"
     },
-    "222222222222222222": {
+    "<DISCORD_CHANNEL_ID_DISCORDCODEX>": {
       "name": "discordcodex",
       "cwd": "/projects/discordcodex",
       "codex_home": "/data/codex-home/discordcodex",
@@ -321,8 +321,8 @@ Metadata fields:
 ```json
 {
   "project": "webapp",
-  "channel_id": "111111111111111111",
-  "user_id": "333333333333333333",
+  "channel_id": "<DISCORD_CHANNEL_ID>",
+  "user_id": "<DISCORD_USER_ID>",
   "started_at": "2026-04-11T14:22:09Z",
   "finished_at": "2026-04-11T14:25:51Z",
   "duration_seconds": 222,
@@ -507,7 +507,7 @@ Manual tests:
 - `!status`, `!cancel`, `!tail`, `!projects`, and `!help` work.
 - One active job per channel is enforced.
 - The tool runs locally on macOS/Linux and in Docker.
-- The default Docker example does not rely on QNAP-specific paths.
+- The default Docker example does not rely on host-specific paths.
 
 ## Future Features
 

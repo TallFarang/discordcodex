@@ -15,8 +15,8 @@ class DockerEntrypointTests(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "GITHUB_USERNAME": "octocat",
-                    "GITHUB_TOKEN": "secret-token",
+                    "GITHUB_USERNAME": "test-github-user",
+                    "GITHUB_TOKEN": "test-github-token",
                     "DISCORDCODEX_DATA_DIR": str(data_dir),
                 }
             )
@@ -38,7 +38,7 @@ class DockerEntrypointTests(unittest.TestCase):
             git_config = data_dir / "gitconfig"
             self.assertEqual(
                 credentials.read_text(encoding="utf-8"),
-                "https://octocat:secret-token@github.com\n",
+                "https://test-github-user:test-github-token@github.com\n",
             )
             self.assertIn(
                 f"helper = store --file {credentials}",

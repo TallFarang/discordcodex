@@ -5,10 +5,13 @@ from discordcodex.config import ProjectConfig
 from discordcodex.prompt import ChannelMessage, build_prompt
 
 
+TEST_CHANNEL_ID = "100000000000000001"
+
+
 class PromptTests(unittest.TestCase):
     def test_build_prompt_separates_metadata_recent_context_and_request(self):
         project = ProjectConfig(
-            channel_id="111111111111111111",
+            channel_id=TEST_CHANNEL_ID,
             name="demo",
             safe_name="demo",
             cwd=Path("/projects/demo"),

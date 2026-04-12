@@ -9,12 +9,12 @@
   },
   "max_concurrent_jobs_global": 2,
   "channels": {
-    "111111111111111111": {
+    "<DISCORD_CHANNEL_ID_WEBAPP>": {
       "name": "webapp",
       "cwd": "/projects/webapp",
       "codex_home": "/data/codex-home/webapp"
     },
-    "222222222222222222": {
+    "<DISCORD_CHANNEL_ID_DISCORDCODEX>": {
       "name": "discordcodex",
       "cwd": "/projects/discordcodex",
       "codex_home": "/data/codex-home/discordcodex",

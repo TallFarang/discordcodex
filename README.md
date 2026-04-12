@@ -62,7 +62,7 @@ Map Discord channels to projects in `config/projects.json`:
 ```json
 {
   "channels": {
-    "111111111111111111": {
+    "<DISCORD_CHANNEL_ID>": {
       "name": "webapp",
       "cwd": "/projects/webapp",
       "codex_home": "/data/codex-home/webapp"

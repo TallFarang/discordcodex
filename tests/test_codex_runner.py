@@ -9,6 +9,9 @@ from discordcodex.codex_runner import CodexRunner
 from discordcodex.config import ProjectConfig
 
 
+TEST_CHANNEL_ID = "100000000000000001"
+
+
 class CodexRunnerTests(unittest.TestCase):
     def test_runs_fake_codex_in_project_directory(self):
         asyncio.run(self._run_fake_codex())
@@ -28,7 +31,7 @@ class CodexRunnerTests(unittest.TestCase):
                 "    print(f'{name}=' + os.environ.get(name, '<missing>'))\n"
             )
             project = ProjectConfig(
-                channel_id="111111111111111111",
+                channel_id=TEST_CHANNEL_ID,
                 name="demo",
                 safe_name="demo",
                 cwd=project_dir,
@@ -41,8 +44,8 @@ class CodexRunnerTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "DISCORD_TOKEN": "discord-secret",
-                    "GITHUB_TOKEN": "github-secret",
+                    "DISCORD_TOKEN": "test-discord-token",
+                    "GITHUB_TOKEN": "test-github-token",
                     "GIT_CONFIG_GLOBAL": str(root / "gitconfig"),
                 },
                 clear=False,
