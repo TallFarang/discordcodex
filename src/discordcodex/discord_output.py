@@ -1,6 +1,23 @@
 from __future__ import annotations
 
 
+def help_message() -> str:
+    return "\n".join(
+        [
+            "DiscordCodex is ready.",
+            "",
+            "Send a normal message here to ask Codex to work in this channel's project.",
+            "",
+            "Commands:",
+            "`!status` - check if Codex is running",
+            "`!cancel` - stop the current run",
+            "`!tail` - show the latest raw log",
+            "`!projects` - list configured projects",
+            "`!help` - show this guide",
+        ]
+    )
+
+
 def extract_assistant_response(text: str) -> str | None:
     lines = text.splitlines()
     codex_indices = [index for index, line in enumerate(lines) if line.strip() == "codex"]

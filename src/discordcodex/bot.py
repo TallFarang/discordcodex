@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .codex_runner import CodexRunner
 from .config import ProjectConfig, Settings
-from .discord_output import chunk_output, extract_assistant_response, summarize_result
+from .discord_output import chunk_output, extract_assistant_response, help_message, summarize_result
 from .locks import JobRegistry
 from .logging_store import LoggingStore
 from .prompt import ChannelMessage, build_prompt
@@ -39,6 +39,7 @@ class DiscordCodexClient:
         self.jobs = JobRegistry(settings.max_concurrent_jobs_global)
         self.runner = CodexRunner(settings.codex_bin, settings.cancel_grace_seconds)
         self.logs = LoggingStore(settings.data_dir)
+        self._sent_startup_guides = False
         self._bind_events()
 
     async def start(self, token: str) -> None:
@@ -50,6 +51,7 @@ class DiscordCodexClient:
         @client.event
         async def on_ready():
             print(f"DiscordCodex connected as {client.user}")
+            await self._send_startup_guides()
 
         @client.event
         async def on_message(message):
@@ -108,7 +110,17 @@ class DiscordCodexClient:
         elif command == "!tail":
             await self._send_tail(message)
         elif command == "!help":
-            await message.channel.send("Commands: `!status`, `!cancel`, `!tail`, `!projects`, `!help`.")
+            await message.channel.send(help_message())
+
+    async def _send_startup_guides(self) -> None:
+        if self._sent_startup_guides:
+            return
+        self._sent_startup_guides = True
+        for channel_id in self.settings.channels:
+            channel = self._client.get_channel(int(channel_id))
+            if channel is None:
+                continue
+            await channel.send(help_message())
 
     async def _send_tail(self, message) -> None:
         project = self.settings.channels.get(str(message.channel.id))
