@@ -74,6 +74,8 @@ The container expects:
 - `/data` for DiscordCodex logs and per-project Codex homes.
 - `/projects` or another host-mounted directory containing the workspaces Codex may edit.
 
+If `GITHUB_TOKEN` is set, the container writes a Git credential store under `/data` at startup and points Git at it with `GIT_CONFIG_GLOBAL`. Set `GITHUB_USERNAME` to your GitHub username, or omit it to use `x-access-token`.
+
 For headless account auth, configure Codex to use file credential storage and mount the relevant `CODEX_HOME` under `/data`. The Codex auth cache contains access tokens; treat it like a password and never commit it.
 
 ## Commands

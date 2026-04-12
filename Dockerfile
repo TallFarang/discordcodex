@@ -21,6 +21,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
 RUN pip install --no-cache-dir .
 
@@ -30,4 +31,5 @@ RUN useradd --create-home --uid 10001 --shell /bin/bash discordcodex \
 
 USER discordcodex
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["discordcodex", "--config", "/config/projects.json"]
