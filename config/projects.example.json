@@ -1,0 +1,24 @@
+{
+  "defaults": {
+    "timeout_seconds": 1800,
+    "include_recent_messages": 10,
+    "codex_args": ["--full-auto"],
+    "max_output_chars_per_message": 1800,
+    "max_output_chunks": 4,
+    "cancel_grace_seconds": 5
+  },
+  "max_concurrent_jobs_global": 2,
+  "channels": {
+    "111111111111111111": {
+      "name": "webapp",
+      "cwd": "/projects/webapp",
+      "codex_home": "/data/codex-home/webapp"
+    },
+    "222222222222222222": {
+      "name": "discordcodex",
+      "cwd": "/projects/discordcodex",
+      "codex_home": "/data/codex-home/discordcodex",
+      "timeout_seconds": 2400
+    }
+  }
+}

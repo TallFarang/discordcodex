@@ -1,0 +1,17 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.env
+.env.*
+!/.env.example
+data
+config/projects.json
+config/*.local.json
+*.log
+*.tar
+*.tar.gz
+auth.json
+.codex
