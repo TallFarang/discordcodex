@@ -14,8 +14,7 @@ services:
       CODEX_BIN: codex
       # Prefer *_FILE token inputs for Docker deployments, and mount
       # matching token files under /run/secrets if you enable them.
-      # DISCORDCODEX_GIT_CREDENTIAL_TOKEN_FILE: /run/secrets/discordcodex_git_token
-      # DISCORDCODEX_GITHUB_API_TOKEN_FILE: /run/secrets/discordcodex_github_api_token
+      # DISCORDCODEX_GITHUB_TOKEN_FILE: /run/secrets/discordcodex_github_token
     volumes:
       - ./config:/config:ro
       - ./data:/data

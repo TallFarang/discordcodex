@@ -122,6 +122,8 @@ The bot ignores:
 In a configured project channel, every normal message from an allowed user triggers Codex.
 Attachments are ignored in v1. If a triggering message includes attachments, the bot should reply that attachments are not supported yet and continue using only the text content when present. If the message has attachments but no text content, it should not trigger Codex.
 
+DiscordCodex must not send usage guides to all configured channels on startup or container restart. On the first normal text message in each configured channel, it should send the usage guide once for that channel, persist that marker under the local data directory, then continue processing the same message as a Codex request. The `!help` command remains available for showing the guide on demand.
+
 ### Control Commands
 
 Control commands do not trigger Codex. They are handled by the bot.
@@ -219,15 +221,19 @@ DISCORDCODEX_DATA_DIR
 DISCORDCODEX_LOG_LEVEL
 CODEX_BIN
 DISCORDCODEX_GIT_USERNAME
+DISCORDCODEX_GITHUB_TOKEN
+DISCORDCODEX_GITHUB_TOKEN_FILE
 DISCORDCODEX_GIT_CREDENTIAL_TOKEN
 DISCORDCODEX_GIT_CREDENTIAL_TOKEN_FILE
 DISCORDCODEX_GITHUB_API_TOKEN
 DISCORDCODEX_GITHUB_API_TOKEN_FILE
 ```
 
-`DISCORDCODEX_GIT_CREDENTIAL_TOKEN` is used by the Docker entrypoint to create Git HTTPS credentials, then unset before DiscordCodex starts. `DISCORDCODEX_GITHUB_API_TOKEN` is exported internally as `GH_TOKEN` so Codex can use the GitHub CLI for read-only GitHub API access.
+`DISCORDCODEX_GITHUB_TOKEN` is used by the Docker entrypoint to create Git HTTPS credentials and export `GH_TOKEN` so Codex can use the GitHub CLI for GitHub API access. `DISCORDCODEX_GIT_USERNAME` defaults to `x-access-token` when omitted.
 
-The `_FILE` variants read the first line from a mounted token file. Docker deployments should prefer file inputs for GitHub tokens so token values are not stored in Docker's configured environment.
+Use exactly one GitHub token source per container. New deployments should choose either `DISCORDCODEX_GITHUB_TOKEN` or `DISCORDCODEX_GITHUB_TOKEN_FILE` and remove unused legacy token variables from the environment. The split Git credential and API token variables remain compatibility aliases.
+
+The `_FILE` variants read the first line from a mounted token file. Docker deployments should prefer `DISCORDCODEX_GITHUB_TOKEN_FILE` so token values are not stored in Docker's configured environment.
 
 ### Discord Intents
 
@@ -427,8 +433,7 @@ services:
       - DISCORDCODEX_CONFIG=/app/config/projects.json
       - DISCORDCODEX_DATA_DIR=/data
       - DISCORDCODEX_GIT_USERNAME=${DISCORDCODEX_GIT_USERNAME}
-      - DISCORDCODEX_GIT_CREDENTIAL_TOKEN_FILE=/run/secrets/discordcodex_git_token
-      - DISCORDCODEX_GITHUB_API_TOKEN_FILE=/run/secrets/discordcodex_github_api_token
+      - DISCORDCODEX_GITHUB_TOKEN_FILE=/run/secrets/discordcodex_github_token
     volumes:
       - ./config:/app/config:ro
       - ./data:/data

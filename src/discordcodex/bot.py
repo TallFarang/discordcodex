@@ -7,6 +7,7 @@ from pathlib import Path
 from .codex_runner import CodexRunner
 from .config import ProjectConfig, Settings
 from .discord_output import chunk_output, extract_assistant_response, help_message, summarize_result
+from .guide_store import GuideStore
 from .locks import JobRegistry
 from .logging_store import LoggingStore
 from .prompt import ChannelMessage, build_prompt
@@ -41,7 +42,7 @@ class DiscordCodexClient:
         self.runner = CodexRunner(settings.codex_bin, settings.cancel_grace_seconds)
         self.logs = LoggingStore(settings.data_dir)
         self.sessions = SessionStore(settings.data_dir)
-        self._sent_startup_guides = False
+        self.guides = GuideStore(settings.data_dir)
         self._bind_events()
 
     async def start(self, token: str) -> None:
@@ -53,7 +54,6 @@ class DiscordCodexClient:
         @client.event
         async def on_ready():
             print(f"DiscordCodex connected as {client.user}")
-            await self._send_startup_guides()
 
         @client.event
         async def on_message(message):
@@ -83,6 +83,8 @@ class DiscordCodexClient:
             return
         if getattr(message, "attachments", None):
             await message.channel.send("Attachments are not supported in v1; using text only.")
+        if self._guides().mark_sent_if_first(str(message.channel.id)):
+            await message.channel.send(help_message())
         if self.jobs.get(str(message.channel.id)):
             await message.channel.send("Codex is already running for this channel. Use `!status` or `!cancel`.")
             return
@@ -139,15 +141,10 @@ class DiscordCodexClient:
         self.sessions.clear(str(message.channel.id))
         await message.channel.send(f"Started a fresh Codex session for `{project.name}`. Send a message to begin.")
 
-    async def _send_startup_guides(self) -> None:
-        if self._sent_startup_guides:
-            return
-        self._sent_startup_guides = True
-        for channel_id in self.settings.channels:
-            channel = self._client.get_channel(int(channel_id))
-            if channel is None:
-                continue
-            await channel.send(help_message())
+    def _guides(self) -> GuideStore:
+        if not hasattr(self, "guides"):
+            self.guides = GuideStore(self.settings.data_dir)
+        return self.guides
 
     async def _send_tail(self, message) -> None:
         project = self.settings.channels.get(str(message.channel.id))
