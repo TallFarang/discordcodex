@@ -3,10 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from discordcodex.bot import DiscordCodexClient
 from discordcodex.codex_runner import CodexProgress, CodexResult
-from discordcodex.config import ProjectConfig, Settings
+from discordcodex.config import GitHubProvisioningConfig, ProjectConfig, Settings
 from discordcodex.discord_output import help_message
 from discordcodex.locks import JobRegistry
 from discordcodex.session_store import ChannelSession, SessionStore
@@ -46,6 +47,7 @@ class FakeDiscordClient:
         self.events = {}
         self.user = "discordcodex-test"
         self.channel = FakeChannel()
+        self.guild = SimpleNamespace(id=int(TEST_GUILD_ID))
 
     def event(self, func):
         self.events[func.__name__] = func
@@ -54,6 +56,11 @@ class FakeDiscordClient:
     def get_channel(self, channel_id):
         if channel_id == self.channel.id:
             return self.channel
+        return None
+
+    def get_guild(self, guild_id):
+        if guild_id == self.guild.id:
+            return self.guild
         return None
 
 
@@ -266,6 +273,63 @@ class BotCommandTests(unittest.TestCase):
                 await client._handle_command(message, "!status")
 
             self.assertEqual(channel.sent, ["Codex is running for `demo`: inspecting files..."])
+
+    def test_pollgh_runs_github_provisioning(self):
+        asyncio.run(self._pollgh_runs_github_provisioning())
+
+    async def _pollgh_runs_github_provisioning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            settings = self._settings(root)
+            settings = Settings(
+                discord_token=settings.discord_token,
+                allowed_guild_id=settings.allowed_guild_id,
+                allowed_user_ids=settings.allowed_user_ids,
+                config_path=settings.config_path,
+                data_dir=settings.data_dir,
+                codex_bin=settings.codex_bin,
+                channels=settings.channels,
+                max_concurrent_jobs_global=settings.max_concurrent_jobs_global,
+                max_output_chunks=settings.max_output_chunks,
+                cancel_grace_seconds=settings.cancel_grace_seconds,
+                log_level=settings.log_level,
+                github_provisioning=GitHubProvisioningConfig(
+                    enabled=True,
+                    owner="TallFarang",
+                    poll_interval_seconds=3600,
+                    run_on_startup=True,
+                    project_root=root / "projects",
+                    codex_home_root=root / "codex-home",
+                    codex_home_template=None,
+                    admin_channel_name="neo",
+                    discord_category_id=None,
+                    include_archived=False,
+                ),
+            )
+            client = DiscordCodexClient.__new__(DiscordCodexClient)
+            client.settings = settings
+            client._client = FakeDiscordClient()
+            client._reload_settings = lambda: None
+            channel = FakeChannel()
+            message = SimpleNamespace(channel=channel)
+
+            class FakeProvisioner:
+                def __init__(self, **kwargs):
+                    self.kwargs = kwargs
+
+                async def run_for_guild(self, guild, existing_project_names):
+                    return SimpleNamespace()
+
+            with patch("discordcodex.bot.GitHubProvisioner", FakeProvisioner):
+                await client._handle_command(message, "!pollgh")
+
+            self.assertEqual(
+                channel.sent,
+                [
+                    "GitHub poll started. Results will be posted in #neo.",
+                    "GitHub poll finished. Results posted in #neo.",
+                ],
+            )
 
     def _settings(self, root: Path) -> Settings:
         project_dir = root / "project"

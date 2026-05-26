@@ -137,6 +137,7 @@ Required v1 commands:
 !session
 !new
 !projects
+!pollgh
 !help
 ```
 
@@ -148,6 +149,7 @@ Command behavior:
 - `!session`: show whether the current channel has a stored Codex session.
 - `!new`: clear the current channel's stored Codex session so the next message starts fresh.
 - `!projects`: list configured projects visible to the current user.
+- `!pollgh`: run GitHub project provisioning immediately when enabled.
 - `!help`: show usage and control commands.
 
 Slash commands may be added later, but text commands are simpler for v1 and easier to use in project channels.
@@ -256,6 +258,17 @@ Example `config/projects.json`:
     "codex_args": ["--full-auto"],
     "max_output_chars_per_message": 1800
   },
+  "github_provisioning": {
+    "enabled": false,
+    "owner": "TallFarang",
+    "poll_interval_seconds": 3600,
+    "run_on_startup": true,
+    "project_root": "/projects",
+    "codex_home_root": "/data/codex-home",
+    "codex_home_template": "/data/codex-home-template",
+    "admin_channel_name": "neo",
+    "include_archived": true
+  },
   "channels": {
     "<DISCORD_CHANNEL_ID_WEBAPP>": {
       "name": "webapp",
@@ -283,6 +296,16 @@ Example `config/projects.json`:
 - `persistent_session` defaults to `true`.
 - Relative paths are resolved relative to the config file directory.
 - The project config must not contain secrets.
+
+### GitHub Provisioning
+
+When `github_provisioning.enabled` is true, DiscordCodex treats GitHub as the source of truth for new repositories. The bot lists all repositories for `owner`, creates missing project checkouts under `project_root`, creates a unique Codex home for each project under `codex_home_root`, creates a Discord text channel named after the repository, and appends the resulting channel mapping to the project config.
+
+Provisioning runs once on startup when `run_on_startup` is true and then every `poll_interval_seconds`; the default polling interval is `3600` seconds. The `!pollgh` command runs the same provisioning pass on demand. Automatic and manual polls must share a lock so only one GitHub provisioning pass runs at a time.
+
+Deleted or inaccessible GitHub repositories are ignored. DiscordCodex must not delete project folders, Codex homes, Discord channels, or config entries during provisioning.
+
+Admin reports are posted to the configured admin channel. The default admin channel name is `neo`. If the channel does not exist, the bot creates it.
 
 ### Startup Validation
 

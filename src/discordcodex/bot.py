@@ -6,9 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .codex_runner import CodexProgress, CodexRunner
-from .config import ProjectConfig, Settings
+from .config import ProjectConfig, Settings, load_settings
 from .discord_output import chunk_output, extract_assistant_response, help_message, summarize_result
 from .guide_store import GuideStore
+from .github_provisioning import GitHubProvisioner
 from .locks import JobRegistry
 from .logging_store import LoggingStore
 from .prompt import ChannelMessage, build_prompt
@@ -55,6 +56,8 @@ class DiscordCodexClient:
         self.logs = LoggingStore(settings.data_dir)
         self.sessions = SessionStore(settings.data_dir)
         self.guides = GuideStore(settings.data_dir)
+        self.github_poll_lock = asyncio.Lock()
+        self.github_poll_task = None
         self._bind_events()
 
     async def start(self, token: str) -> None:
@@ -66,6 +69,7 @@ class DiscordCodexClient:
         @client.event
         async def on_ready():
             print(f"DiscordCodex connected as {client.user}")
+            self._start_github_polling()
 
         @client.event
         async def on_message(message):
@@ -134,6 +138,8 @@ class DiscordCodexClient:
             await self._clear_session(message)
         elif command == "!help":
             await message.channel.send(help_message())
+        elif command == "!pollgh":
+            await self._handle_pollgh(message)
 
     async def _send_session(self, message) -> None:
         project = self.settings.channels.get(str(message.channel.id))
@@ -160,6 +166,68 @@ class DiscordCodexClient:
         if not hasattr(self, "guides"):
             self.guides = GuideStore(self.settings.data_dir)
         return self.guides
+
+    def _start_github_polling(self) -> None:
+        config = self.settings.github_provisioning
+        if not config or not config.enabled:
+            return
+        if self.github_poll_task and not self.github_poll_task.done():
+            return
+        self.github_poll_task = asyncio.create_task(self._github_poll_loop())
+
+    async def _github_poll_loop(self) -> None:
+        config = self.settings.github_provisioning
+        if not config:
+            return
+        if config.run_on_startup:
+            await self._run_github_poll(trigger="startup")
+        while True:
+            await asyncio.sleep(config.poll_interval_seconds)
+            await self._run_github_poll(trigger="scheduled")
+
+    async def _handle_pollgh(self, message) -> None:
+        config = self.settings.github_provisioning
+        if not config or not config.enabled:
+            await message.channel.send("GitHub provisioning is not enabled.")
+            return
+        if self._github_lock().locked():
+            await message.channel.send("GitHub poll is already running.")
+            return
+        await message.channel.send("GitHub poll started. Results will be posted in #neo.")
+        report = await self._run_github_poll(trigger="manual")
+        if report is not None:
+            await message.channel.send("GitHub poll finished. Results posted in #neo.")
+
+    async def _run_github_poll(self, *, trigger: str):
+        config = self.settings.github_provisioning
+        if not config or not config.enabled:
+            return None
+        lock = self._github_lock()
+        if lock.locked():
+            return None
+        async with lock:
+            guild = self._client.get_guild(int(self.settings.allowed_guild_id))
+            if guild is None:
+                return None
+            provisioner = GitHubProvisioner(
+                config=config,
+                config_path=self.settings.config_path,
+                discord_client=self._client,
+            )
+            report = await provisioner.run_for_guild(
+                guild,
+                {project.name for project in self.settings.channels.values()},
+            )
+            self._reload_settings()
+            return report
+
+    def _github_lock(self) -> asyncio.Lock:
+        if not hasattr(self, "github_poll_lock"):
+            self.github_poll_lock = asyncio.Lock()
+        return self.github_poll_lock
+
+    def _reload_settings(self) -> None:
+        self.settings = load_settings(config_path=str(self.settings.config_path))
 
     async def _send_tail(self, message) -> None:
         project = self.settings.channels.get(str(message.channel.id))

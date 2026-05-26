@@ -15,6 +15,7 @@ def help_message() -> str:
             "`!session` - show this channel's Codex session",
             "`!new` - clear this channel's Codex session",
             "`!projects` - list configured projects",
+            "`!pollgh` - run GitHub project provisioning",
             "`!help` - show this guide",
         ]
     )

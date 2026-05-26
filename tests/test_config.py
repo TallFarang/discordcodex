@@ -22,9 +22,7 @@ class ConfigTests(unittest.TestCase):
             project = root / "project"
             project.mkdir()
             data = root / "data"
-            codex_bin = root / "codex"
-            codex_bin.write_text("#!/bin/sh\nexit 0\n")
-            codex_bin.chmod(0o755)
+            codex_bin = "/bin/sh"
             config_path = root / "projects.json"
             config_path.write_text(
                 json.dumps(
@@ -47,7 +45,7 @@ class ConfigTests(unittest.TestCase):
                 "ALLOWED_USER_IDS": f"{TEST_USER_ID},{TEST_OTHER_USER_ID}",
                 "DISCORDCODEX_CONFIG": str(config_path),
                 "DISCORDCODEX_DATA_DIR": str(data),
-                "CODEX_BIN": str(codex_bin),
+                "CODEX_BIN": codex_bin,
             }
 
             with patch.dict(os.environ, env, clear=True):
@@ -66,9 +64,7 @@ class ConfigTests(unittest.TestCase):
             project = root / "project"
             project.mkdir()
             data = root / "data"
-            codex_bin = root / "codex"
-            codex_bin.write_text("#!/bin/sh\nexit 0\n")
-            codex_bin.chmod(0o755)
+            codex_bin = "/bin/sh"
             config_path = root / "projects.json"
             config_path.write_text(
                 json.dumps(
@@ -90,7 +86,7 @@ class ConfigTests(unittest.TestCase):
                 "ALLOWED_USER_IDS": TEST_USER_ID,
                 "DISCORDCODEX_CONFIG": str(config_path),
                 "DISCORDCODEX_DATA_DIR": str(data),
-                "CODEX_BIN": str(codex_bin),
+                "CODEX_BIN": codex_bin,
             }
 
             with patch.dict(os.environ, env, clear=True):
@@ -98,14 +94,65 @@ class ConfigTests(unittest.TestCase):
 
             self.assertFalse(settings.channels[TEST_CHANNEL_ID].persistent_session)
 
+    def test_loads_github_provisioning_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            project.mkdir()
+            data = root / "data"
+            codex_bin = "/bin/sh"
+            project_root = root / "projects"
+            codex_home_root = root / "codex-home"
+            template = root / "codex-template"
+            project_root.mkdir()
+            codex_home_root.mkdir()
+            template.mkdir()
+            config_path = root / "projects.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "channels": {
+                            TEST_CHANNEL_ID: {
+                                "name": "demo",
+                                "cwd": "project",
+                            }
+                        },
+                        "github_provisioning": {
+                            "enabled": True,
+                            "owner": "TallFarang",
+                            "poll_interval_seconds": 3600,
+                            "project_root": str(project_root),
+                            "codex_home_root": str(codex_home_root),
+                            "codex_home_template": str(template),
+                            "admin_channel_name": "Neo",
+                        },
+                    }
+                )
+            )
+
+            env = {
+                "DISCORD_TOKEN": "test-discord-token",
+                "ALLOWED_GUILD_ID": TEST_GUILD_ID,
+                "ALLOWED_USER_IDS": TEST_USER_ID,
+                "DISCORDCODEX_CONFIG": str(config_path),
+                "DISCORDCODEX_DATA_DIR": str(data),
+                "CODEX_BIN": codex_bin,
+            }
+
+            with patch.dict(os.environ, env, clear=True):
+                settings = load_settings()
+
+            self.assertIsNotNone(settings.github_provisioning)
+            self.assertEqual(settings.github_provisioning.owner, "TallFarang")
+            self.assertEqual(settings.github_provisioning.poll_interval_seconds, 3600)
+            self.assertEqual(settings.github_provisioning.admin_channel_name, "neo")
+
     def test_rejects_duplicate_normalized_project_names(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             project = root / "project"
             project.mkdir()
-            codex_bin = root / "codex"
-            codex_bin.write_text("#!/bin/sh\nexit 0\n")
-            codex_bin.chmod(0o755)
+            codex_bin = "/bin/sh"
             config_path = root / "projects.json"
             config_path.write_text(
                 json.dumps(
@@ -123,7 +170,7 @@ class ConfigTests(unittest.TestCase):
                 "ALLOWED_GUILD_ID": TEST_GUILD_ID,
                 "ALLOWED_USER_IDS": TEST_USER_ID,
                 "DISCORDCODEX_CONFIG": str(config_path),
-                "CODEX_BIN": str(codex_bin),
+                "CODEX_BIN": codex_bin,
             }
 
             with patch.dict(os.environ, env, clear=True):

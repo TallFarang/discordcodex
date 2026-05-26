@@ -27,6 +27,20 @@ class ProjectConfig:
 
 
 @dataclass(frozen=True)
+class GitHubProvisioningConfig:
+    enabled: bool
+    owner: str
+    poll_interval_seconds: int
+    run_on_startup: bool
+    project_root: Path
+    codex_home_root: Path
+    codex_home_template: Path | None
+    admin_channel_name: str
+    discord_category_id: str | None
+    include_archived: bool
+
+
+@dataclass(frozen=True)
 class Settings:
     discord_token: str
     allowed_guild_id: str
@@ -39,6 +53,7 @@ class Settings:
     max_output_chunks: int
     cancel_grace_seconds: float
     log_level: str
+    github_provisioning: GitHubProvisioningConfig | None = None
 
 
 def load_settings(env: dict[str, str] | None = None, config_path: str | None = None) -> Settings:
@@ -87,6 +102,11 @@ def load_settings(env: dict[str, str] | None = None, config_path: str | None = N
         safe_names.add(project.safe_name)
         channels[channel_id] = project
 
+    github_provisioning = _build_github_provisioning(
+        raw.get("github_provisioning"),
+        base_dir,
+    )
+
     return Settings(
         discord_token=discord_token,
         allowed_guild_id=allowed_guild_id,
@@ -105,6 +125,7 @@ def load_settings(env: dict[str, str] | None = None, config_path: str | None = N
         ),
         cancel_grace_seconds=float(defaults.get("cancel_grace_seconds", 5.0)),
         log_level=values.get("DISCORDCODEX_LOG_LEVEL", "INFO").upper(),
+        github_provisioning=github_provisioning,
     )
 
 
@@ -173,6 +194,54 @@ def normalize_project_name(name: str) -> str:
     if not safe:
         raise ValueError(f"Project name cannot be normalized safely: {name}")
     return safe
+
+
+def _build_github_provisioning(
+    raw: Any,
+    base_dir: Path,
+) -> GitHubProvisioningConfig | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("github_provisioning must be an object")
+
+    enabled = bool(raw.get("enabled", False))
+    owner = str(raw.get("owner", "")).strip()
+    if enabled and not owner:
+        raise ValueError("github_provisioning.owner is required when provisioning is enabled")
+
+    project_root_value = str(raw.get("project_root", "/projects"))
+    codex_home_root_value = str(raw.get("codex_home_root", "/data/codex-home"))
+    project_root = _resolve_path(project_root_value, base_dir)
+    codex_home_root = _resolve_path(codex_home_root_value, base_dir)
+    if enabled:
+        project_root.mkdir(parents=True, exist_ok=True)
+        codex_home_root.mkdir(parents=True, exist_ok=True)
+        _require_writable_dir(project_root, "github_provisioning.project_root")
+        _require_writable_dir(codex_home_root, "github_provisioning.codex_home_root")
+
+    template = raw.get("codex_home_template")
+    codex_home_template = _resolve_path(str(template), base_dir) if template else None
+
+    category_id = raw.get("discord_category_id")
+    if category_id is not None and not _is_snowflake(str(category_id)):
+        raise ValueError("github_provisioning.discord_category_id must be a Discord snowflake ID")
+
+    return GitHubProvisioningConfig(
+        enabled=enabled,
+        owner=owner,
+        poll_interval_seconds=_positive_int(
+            raw.get("poll_interval_seconds", 3600),
+            "github_provisioning.poll_interval_seconds",
+        ),
+        run_on_startup=bool(raw.get("run_on_startup", True)),
+        project_root=project_root.resolve(),
+        codex_home_root=codex_home_root.resolve(),
+        codex_home_template=codex_home_template.resolve() if codex_home_template else None,
+        admin_channel_name=normalize_project_name(str(raw.get("admin_channel_name", "neo"))),
+        discord_category_id=str(category_id) if category_id is not None else None,
+        include_archived=bool(raw.get("include_archived", True)),
+    )
 
 
 def _resolve_path(value: str, base_dir: Path) -> Path:

@@ -9,6 +9,17 @@
     "cancel_grace_seconds": 5
   },
   "max_concurrent_jobs_global": 2,
+  "github_provisioning": {
+    "enabled": false,
+    "owner": "TallFarang",
+    "poll_interval_seconds": 3600,
+    "run_on_startup": true,
+    "project_root": "/projects",
+    "codex_home_root": "/data/codex-home",
+    "codex_home_template": "/data/codex-home-template",
+    "admin_channel_name": "neo",
+    "include_archived": true
+  },
   "channels": {
     "<DISCORD_CHANNEL_ID_WEBAPP>": {
       "name": "webapp",

@@ -88,6 +88,40 @@ Set `DISCORDCODEX_CODEX_MODEL=latest` to have the Docker entrypoint resolve Open
 
 By default, each channel keeps one Codex conversation session. The first message starts a new session and later messages resume it with `codex exec resume`. Set `persistent_session` to `false` on a project to keep stateless per-message runs.
 
+### GitHub Project Provisioning
+
+DiscordCodex can poll GitHub and provision missing repositories as projects. GitHub is treated as the source of truth for new repos only; if a repo is deleted or hidden from the token later, DiscordCodex leaves existing channels, folders, and config entries alone.
+
+Example:
+
+```json
+{
+  "github_provisioning": {
+    "enabled": true,
+    "owner": "TallFarang",
+    "poll_interval_seconds": 3600,
+    "run_on_startup": true,
+    "project_root": "/projects",
+    "codex_home_root": "/data/codex-home",
+    "codex_home_template": "/data/codex-home-template",
+    "admin_channel_name": "neo",
+    "include_archived": true
+  }
+}
+```
+
+The poller runs once at startup and then every `poll_interval_seconds`; the recommended default is `3600` seconds, or once per hour. Use `!pollgh` in Discord to run the same provisioning process on demand.
+
+For each missing repository, DiscordCodex:
+
+- creates or reuses a Discord text channel named after the repo, such as `discordcodex`;
+- creates or reuses `/projects/<repo-name>` and clones the repo when the folder is missing or empty;
+- creates `/data/codex-home/<repo-name>` from `codex_home_template`, or as an empty directory when no template is configured;
+- appends the new channel mapping to `config/projects.json`;
+- posts the provisioning report to the admin channel, normally `#neo`.
+
+If GitHub provisioning is enabled, `config/projects.json` must be writable by the bot because new channel mappings are appended automatically. Docker deployments that use provisioning should not mount `/config` read-only.
+
 ## Codex Auth
 
 DiscordCodex does not require an OpenAI API key. It runs the Codex CLI, so authentication is whatever Codex CLI supports in its `CODEX_HOME`.
@@ -162,6 +196,7 @@ On the first normal text message in each configured channel, DiscordCodex sends 
 - `!session`: show the current channel's stored Codex session.
 - `!new`: clear the current channel's stored Codex session.
 - `!projects`: list configured project names.
+- `!pollgh`: run GitHub project provisioning immediately when enabled.
 - `!help`: show the usage guide.
 
 Any non-command message in a configured channel starts a Codex run.
