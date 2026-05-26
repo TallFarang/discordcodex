@@ -84,6 +84,8 @@ Map Discord channels to projects in `config/projects.json`:
 
 `codex_home` should point to a writable directory that contains Codex auth/config for that project.
 
+Set `DISCORDCODEX_CODEX_MODEL=latest` to have the Docker entrypoint resolve OpenAI's current latest model at container startup and write it to `DISCORDCODEX_CODEX_CONFIG`, which defaults to `/data/codex-home/shared/config.toml`. If the lookup fails, the existing Codex config is left unchanged.
+
 By default, each channel keeps one Codex conversation session. The first message starts a new session and later messages resume it with `codex exec resume`. Set `persistent_session` to `false` on a project to keep stateless per-message runs.
 
 ## Codex Auth

@@ -220,6 +220,8 @@ DISCORDCODEX_CONFIG
 DISCORDCODEX_DATA_DIR
 DISCORDCODEX_LOG_LEVEL
 CODEX_BIN
+DISCORDCODEX_CODEX_MODEL
+DISCORDCODEX_CODEX_CONFIG
 DISCORDCODEX_GIT_USERNAME
 DISCORDCODEX_GITHUB_TOKEN
 DISCORDCODEX_GITHUB_TOKEN_FILE
@@ -234,6 +236,8 @@ DISCORDCODEX_GITHUB_API_TOKEN_FILE
 Use exactly one GitHub token source per container. New deployments should choose either `DISCORDCODEX_GITHUB_TOKEN` or `DISCORDCODEX_GITHUB_TOKEN_FILE` and remove unused legacy token variables from the environment. The split Git credential and API token variables remain compatibility aliases.
 
 The `_FILE` variants read the first line from a mounted token file. Docker deployments should prefer `DISCORDCODEX_GITHUB_TOKEN_FILE` so token values are not stored in Docker's configured environment.
+
+When `DISCORDCODEX_CODEX_MODEL` is set to `latest`, the Docker entrypoint resolves OpenAI's current latest model at startup and writes it to `DISCORDCODEX_CODEX_CONFIG`, defaulting to `/data/codex-home/shared/config.toml`. If the lookup fails, startup continues and the existing Codex config remains unchanged.
 
 ### Discord Intents
 

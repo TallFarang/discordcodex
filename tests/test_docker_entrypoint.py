@@ -9,6 +9,92 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DockerEntrypointTests(unittest.TestCase):
+    def test_latest_codex_model_updates_config_before_exec(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            codex_config = data_dir / "codex-home" / "shared" / "config.toml"
+            codex_config.parent.mkdir(parents=True)
+            codex_config.write_text(
+                'model = "gpt-5.3-codex"\ncli_auth_credentials_store = "file"\n',
+                encoding="utf-8",
+            )
+            latest_model_doc = root / "latest-model.md"
+            latest_model_doc.write_text(
+                "---\nlatestModelInfo:\n  model: gpt-5.5\n---\n",
+                encoding="utf-8",
+            )
+            fake_curl = root / "curl"
+            fake_curl.write_text(
+                "#!/bin/sh\ncat \"$LATEST_MODEL_DOC\"\n",
+                encoding="utf-8",
+            )
+            fake_curl.chmod(0o755)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "DISCORDCODEX_DATA_DIR": str(data_dir),
+                    "DISCORDCODEX_CODEX_MODEL": "latest",
+                    "DISCORDCODEX_CODEX_CONFIG": str(codex_config),
+                    "LATEST_MODEL_DOC": str(latest_model_doc),
+                    "PATH": f"{root}:{env['PATH']}",
+                }
+            )
+
+            result = subprocess.run(
+                [
+                    str(ROOT / "docker-entrypoint.sh"),
+                    "sh",
+                    "-c",
+                    "cat \"$DISCORDCODEX_CODEX_CONFIG\"",
+                ],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            self.assertIn('model = "gpt-5.5"', result.stdout)
+            self.assertIn('cli_auth_credentials_store = "file"', result.stdout)
+            self.assertIn("Updated Codex model to gpt-5.5", result.stderr)
+
+    def test_latest_codex_model_failure_preserves_existing_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            codex_config = data_dir / "codex-home" / "shared" / "config.toml"
+            codex_config.parent.mkdir(parents=True)
+            original = 'model = "gpt-5.3-codex"\ncli_auth_credentials_store = "file"\n'
+            codex_config.write_text(original, encoding="utf-8")
+            fake_curl = root / "curl"
+            fake_curl.write_text("#!/bin/sh\nexit 22\n", encoding="utf-8")
+            fake_curl.chmod(0o755)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "DISCORDCODEX_DATA_DIR": str(data_dir),
+                    "DISCORDCODEX_CODEX_MODEL": "latest",
+                    "DISCORDCODEX_CODEX_CONFIG": str(codex_config),
+                    "PATH": f"{root}:{env['PATH']}",
+                }
+            )
+
+            result = subprocess.run(
+                [
+                    str(ROOT / "docker-entrypoint.sh"),
+                    "sh",
+                    "-c",
+                    "cat \"$DISCORDCODEX_CODEX_CONFIG\"",
+                ],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            self.assertEqual(result.stdout, original)
+            self.assertIn("Could not resolve latest Codex model", result.stderr)
+
     def test_single_github_token_writes_git_credentials_and_exports_gh_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"

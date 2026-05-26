@@ -4,6 +4,8 @@ set -eu
 DATA_DIR="${DISCORDCODEX_DATA_DIR:-/data}"
 GIT_CREDENTIALS_FILE="${GIT_CREDENTIALS_FILE:-$DATA_DIR/git-credentials}"
 GIT_CONFIG_FILE="${GIT_CONFIG_GLOBAL:-$DATA_DIR/gitconfig}"
+CODEX_CONFIG_FILE="${DISCORDCODEX_CODEX_CONFIG:-$DATA_DIR/codex-home/shared/config.toml}"
+LATEST_MODEL_URL="${DISCORDCODEX_LATEST_MODEL_URL:-https://developers.openai.com/api/docs/guides/latest-model.md}"
 
 read_secret_file() {
     if [ ! -f "$1" ]; then
@@ -12,6 +14,50 @@ read_secret_file() {
     fi
     IFS= read -r value < "$1" || true
     printf '%s' "$value"
+}
+
+resolve_latest_codex_model() {
+    curl -fsSL "$LATEST_MODEL_URL" 2>/dev/null \
+        | sed -n 's/^[[:space:]]*model:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' \
+        | head -n 1
+}
+
+set_codex_model() {
+    model="$1"
+    config_file="$2"
+    mkdir -p "$(dirname "$config_file")"
+    if [ -f "$config_file" ] && grep -q '^[[:space:]]*model[[:space:]]*=' "$config_file"; then
+        sed "s/^[[:space:]]*model[[:space:]]*=.*/model = \"$model\"/" "$config_file" > "$config_file.tmp"
+        mv "$config_file.tmp" "$config_file"
+    elif [ -f "$config_file" ]; then
+        tmp_file="$config_file.tmp"
+        {
+            printf 'model = "%s"\n' "$model"
+            cat "$config_file"
+        } > "$tmp_file"
+        mv "$tmp_file" "$config_file"
+    else
+        printf 'model = "%s"\n' "$model" > "$config_file"
+    fi
+}
+
+configure_codex_model() {
+    requested_model="${DISCORDCODEX_CODEX_MODEL:-}"
+    if [ -z "$requested_model" ]; then
+        return
+    fi
+    if [ "$requested_model" = "latest" ]; then
+        resolved_model="$(resolve_latest_codex_model || true)"
+        if [ -z "$resolved_model" ]; then
+            printf 'Could not resolve latest Codex model; leaving %s unchanged.\n' "$CODEX_CONFIG_FILE" >&2
+            return
+        fi
+        set_codex_model "$resolved_model" "$CODEX_CONFIG_FILE"
+        printf 'Updated Codex model to %s in %s.\n' "$resolved_model" "$CODEX_CONFIG_FILE" >&2
+        return
+    fi
+    set_codex_model "$requested_model" "$CODEX_CONFIG_FILE"
+    printf 'Updated Codex model to %s in %s.\n' "$requested_model" "$CODEX_CONFIG_FILE" >&2
 }
 
 GITHUB_TOKEN_VALUE="${DISCORDCODEX_GITHUB_TOKEN:-}"
@@ -53,5 +99,7 @@ unset DISCORDCODEX_GITHUB_TOKEN
 unset DISCORDCODEX_GITHUB_TOKEN_FILE
 unset DISCORDCODEX_GITHUB_API_TOKEN
 unset DISCORDCODEX_GITHUB_API_TOKEN_FILE
+
+configure_codex_model
 
 exec "$@"
