@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from discordcodex.bot import DiscordCodexClient
+from discordcodex.codex_runner import CodexProgress, CodexResult
 from discordcodex.config import ProjectConfig, Settings
 from discordcodex.discord_output import help_message
 from discordcodex.locks import JobRegistry
@@ -21,9 +22,23 @@ class FakeChannel:
         self.id = int(channel_id)
         self.name = "demo"
         self.sent = []
+        self.messages = []
 
     async def send(self, content):
         self.sent.append(content)
+        sent_message = FakeSentMessage(content)
+        self.messages.append(sent_message)
+        return sent_message
+
+
+class FakeSentMessage:
+    def __init__(self, content):
+        self.content = content
+        self.edits = []
+
+    async def edit(self, content):
+        self.content = content
+        self.edits.append(content)
 
 
 class FakeDiscordClient:
@@ -177,6 +192,80 @@ class BotCommandTests(unittest.TestCase):
             await client.handle_message(second)
 
             self.assertEqual(second_channel.sent, ["ran demo: do the next thing"])
+
+    def test_run_codex_edits_single_progress_message_and_sends_response(self):
+        asyncio.run(self._run_codex_edits_progress())
+
+    async def _run_codex_edits_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            settings = self._settings(root)
+            client = DiscordCodexClient.__new__(DiscordCodexClient)
+            client.settings = settings
+            client.jobs = JobRegistry(settings.max_concurrent_jobs_global)
+            client.logs = SimpleNamespace(
+                create_run_paths=lambda project_name: SimpleNamespace(
+                    prompt=root / "prompt.txt",
+                    log=root / "run.log",
+                    metadata=root / "metadata.json",
+                ),
+                write_metadata=lambda paths, metadata: None,
+            )
+            client.sessions = SimpleNamespace(load=lambda channel_id: None)
+            async def no_recent_messages(message, limit):
+                return []
+
+            client._recent_messages = no_recent_messages
+
+            class FakeRunner:
+                async def run(self, **kwargs):
+                    callback = kwargs["progress_callback"]
+                    await callback(CodexProgress(message="Codex is inspecting files...", kind="inspect"))
+                    await callback(CodexProgress(message="Codex is inspecting files...", kind="inspect"))
+                    await callback(CodexProgress(message="Codex is preparing a response...", kind="response"))
+                    return CodexResult(
+                        exit_code=0,
+                        output='{"type": "item.completed", "item": {"type": "agent_message", "text": "hello"}}\n',
+                        duration_seconds=1.0,
+                        timed_out=False,
+                        cancelled=False,
+                        command=["codex", "<prompt redacted>"],
+                        assistant_response="hello",
+                    )
+
+            client.runner = FakeRunner()
+            channel = FakeChannel()
+            message = SimpleNamespace(
+                channel=channel,
+                author=SimpleNamespace(id=int(TEST_USER_ID)),
+            )
+
+            await client._run_codex_for_message(message, settings.channels[TEST_CHANNEL_ID], "do work")
+
+            self.assertEqual(channel.sent[0], "Codex is starting...")
+            self.assertEqual(channel.sent[1], "hello")
+            self.assertEqual(len(channel.messages), 2)
+            self.assertIn("Codex is inspecting files...", channel.messages[0].edits)
+            self.assertEqual(channel.messages[0].edits[-1], "Codex finished.")
+
+    def test_status_reports_latest_progress_when_job_is_running(self):
+        asyncio.run(self._status_reports_latest_progress())
+
+    async def _status_reports_latest_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            settings = self._settings(root)
+            client = DiscordCodexClient.__new__(DiscordCodexClient)
+            client.settings = settings
+            client.jobs = JobRegistry(settings.max_concurrent_jobs_global)
+            channel = FakeChannel()
+            message = SimpleNamespace(channel=channel)
+
+            async with client.jobs.reserve(TEST_CHANNEL_ID, "demo"):
+                await client.jobs.set_latest_status(TEST_CHANNEL_ID, "inspecting files...")
+                await client._handle_command(message, "!status")
+
+            self.assertEqual(channel.sent, ["Codex is running for `demo`: inspecting files..."])
 
     def _settings(self, root: Path) -> Settings:
         project_dir = root / "project"

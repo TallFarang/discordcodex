@@ -10,6 +10,7 @@ class ChannelJob:
     task: asyncio.Task | None
     project_name: str
     started_at: float
+    latest_status: str | None = None
 
 
 class JobRegistry:
@@ -45,6 +46,12 @@ class JobRegistry:
             job = self._jobs.get(channel_id)
             if job:
                 job.task = task
+
+    async def set_latest_status(self, channel_id: str, latest_status: str) -> None:
+        async with self._lock:
+            job = self._jobs.get(channel_id)
+            if job:
+                job.latest_status = latest_status
 
     async def cancel(self, channel_id: str) -> bool:
         job = self._jobs.get(channel_id)

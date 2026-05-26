@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .codex_runner import CodexRunner
+from .codex_runner import CodexProgress, CodexRunner
 from .config import ProjectConfig, Settings
 from .discord_output import chunk_output, extract_assistant_response, help_message, summarize_result
 from .guide_store import GuideStore
@@ -12,6 +13,17 @@ from .locks import JobRegistry
 from .logging_store import LoggingStore
 from .prompt import ChannelMessage, build_prompt
 from .session_store import ChannelSession, SessionStore
+
+
+def _status_from_progress(progress: CodexProgress) -> str:
+    message = progress.message.strip()
+    if message.startswith("Codex is "):
+        message = message[len("Codex is ") :]
+    elif message.startswith("Codex "):
+        message = message[len("Codex ") :]
+    if message:
+        return message[:1].lower() + message[1:]
+    return progress.kind
 
 
 async def run_bot(settings: Settings) -> None:
@@ -100,7 +112,10 @@ class DiscordCodexClient:
         if command == "!status":
             job = self.jobs.get(channel_id)
             if job:
-                await message.channel.send(f"Codex is running for `{job.project_name}`.")
+                if job.latest_status:
+                    await message.channel.send(f"Codex is running for `{job.project_name}`: {job.latest_status}")
+                else:
+                    await message.channel.send(f"Codex is running for `{job.project_name}`.")
             else:
                 await message.channel.send("No Codex job is running for this channel.")
         elif command == "!cancel":
@@ -162,7 +177,25 @@ class DiscordCodexClient:
     async def _run_codex_for_message(self, message, project: ProjectConfig, content: str) -> None:
         paths = self.logs.create_run_paths(project.name)
         started = datetime.now(timezone.utc)
-        await message.channel.send(f"Codex is working on `{project.name}`...")
+        progress_message = await message.channel.send("Codex is starting...")
+        progress_text = "Codex is starting..."
+        last_edit_at = 0.0
+
+        async def update_progress(progress: CodexProgress, *, force: bool = False) -> None:
+            nonlocal progress_text, last_edit_at
+            await self.jobs.set_latest_status(str(message.channel.id), _status_from_progress(progress))
+            if progress.message == progress_text:
+                return
+            now = time.monotonic()
+            if not force and last_edit_at and now - last_edit_at < 2.0:
+                return
+            try:
+                await progress_message.edit(content=progress.message)
+            except Exception:
+                return
+            progress_text = progress.message
+            last_edit_at = now
+
         stored_session = self.sessions.load(str(message.channel.id)) if project.persistent_session else None
         recent = [] if stored_session else await self._recent_messages(message, project.include_recent_messages)
         prompt = build_prompt(
@@ -177,7 +210,12 @@ class DiscordCodexClient:
             project=project,
             prompt=prompt,
             session_id=stored_session.thread_id if stored_session else None,
+            progress_callback=update_progress,
         )
+        if result.exit_code == 0 and not result.cancelled and not result.timed_out:
+            await update_progress(CodexProgress(message="Codex finished.", kind="finish"), force=True)
+        else:
+            await update_progress(CodexProgress(message="Codex stopped.", kind="finish"), force=True)
         paths.log.write_text(result.output, encoding="utf-8")
 
         response = result.assistant_response or (

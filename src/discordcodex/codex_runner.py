@@ -5,6 +5,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from typing import Awaitable, Callable
 
 from .config import ProjectConfig
 
@@ -21,6 +22,13 @@ PRESERVED_ENV_NAMES = {
     "TMPDIR",
     "TZ",
 }
+
+
+@dataclass(frozen=True)
+class CodexProgress:
+    message: str
+    kind: str
+    detail: str | None = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +55,7 @@ class CodexRunner:
         timeout_seconds: int | None = None,
         extra_args: list[str] | None = None,
         session_id: str | None = None,
+        progress_callback: Callable[[CodexProgress], Awaitable[None]] | None = None,
     ) -> CodexResult:
         started = time.monotonic()
         timeout = timeout_seconds or project.timeout_seconds
@@ -64,27 +73,33 @@ class CodexRunner:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
-        output = b""
+        output_parts: list[bytes] = []
         timed_out = False
         cancelled = False
+        reader_task = asyncio.create_task(
+            self._read_output(process, output_parts, progress_callback)
+        )
         try:
-            output, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            await asyncio.wait_for(asyncio.shield(reader_task), timeout=timeout)
+            await process.wait()
         except asyncio.TimeoutError:
             timed_out = True
-            output = await self._terminate(process)
+            await self._terminate_streaming(process, reader_task)
         except asyncio.CancelledError:
             cancelled = True
-            output = await self._terminate(process)
+            await self._terminate_streaming(process, reader_task)
         duration = time.monotonic() - started
+        output = b"".join(output_parts)
+        decoded_output = output.decode("utf-8", errors="replace")
         return CodexResult(
             exit_code=process.returncode,
-            output=output.decode("utf-8", errors="replace"),
+            output=decoded_output,
             duration_seconds=duration,
             timed_out=timed_out,
             cancelled=cancelled,
             command=self._redacted_command(project, session_id=session_id),
-            thread_id=_extract_thread_id(output.decode("utf-8", errors="replace")),
-            assistant_response=_extract_agent_message(output.decode("utf-8", errors="replace")),
+            thread_id=_extract_thread_id(decoded_output),
+            assistant_response=_extract_agent_message(decoded_output),
         )
 
     def _build_args(
@@ -138,6 +153,46 @@ class CodexRunner:
             output, _ = await process.communicate()
             return output
 
+    async def _read_output(
+        self,
+        process: asyncio.subprocess.Process,
+        output_parts: list[bytes],
+        progress_callback: Callable[[CodexProgress], Awaitable[None]] | None,
+    ) -> None:
+        if process.stdout is None:
+            return
+        last_progress: CodexProgress | None = None
+        while True:
+            line = await process.stdout.readline()
+            if not line:
+                return
+            output_parts.append(line)
+            if progress_callback is None:
+                continue
+            progress = _progress_from_line(line.decode("utf-8", errors="replace"))
+            if progress is None or progress == last_progress:
+                continue
+            last_progress = progress
+            try:
+                await progress_callback(progress)
+            except Exception:
+                continue
+
+    async def _terminate_streaming(
+        self,
+        process: asyncio.subprocess.Process,
+        reader_task: asyncio.Task[None],
+    ) -> None:
+        if process.returncode is None:
+            process.terminate()
+        try:
+            await asyncio.wait_for(asyncio.shield(reader_task), timeout=self.cancel_grace_seconds)
+        except asyncio.TimeoutError:
+            if process.returncode is None:
+                process.kill()
+            await reader_task
+        await process.wait()
+
 
 def _codex_child_env(source: os._Environ[str] | dict[str, str]) -> dict[str, str]:
     env: dict[str, str] = {}
@@ -166,6 +221,50 @@ def _extract_agent_message(output: str) -> str | None:
                 messages.append(str(item["text"]))
     if messages:
         return "\n".join(messages).strip()
+    return None
+
+
+def _progress_from_line(line: str) -> CodexProgress | None:
+    try:
+        event = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(event, dict):
+        return None
+    return _progress_from_event(event)
+
+
+def _progress_from_event(event: dict) -> CodexProgress | None:
+    item = event.get("item")
+    item = item if isinstance(item, dict) else {}
+    event_type = event.get("type")
+    item_type = item.get("type")
+
+    if event_type == "item.completed" and item_type == "agent_message":
+        return CodexProgress(message="Codex is preparing a response...", kind="response")
+
+    if event_type not in {"item.started", "item.completed"}:
+        return None
+
+    searchable = " ".join(
+        str(value)
+        for value in (
+            item_type,
+            item.get("name"),
+            item.get("title"),
+            item.get("command"),
+            item.get("status"),
+        )
+        if value
+    ).lower()
+    if not searchable:
+        return None
+    if any(token in searchable for token in ("edit", "patch", "write", "apply_patch")):
+        return CodexProgress(message="Codex is editing files...", kind="edit")
+    if any(token in searchable for token in ("read", "grep", "search", "find", "list", "ls", "cat", "sed", "rg")):
+        return CodexProgress(message="Codex is inspecting files...", kind="inspect")
+    if any(token in searchable for token in ("command", "shell", "exec", "tool_call")):
+        return CodexProgress(message="Codex is running a command...", kind="command")
     return None
 
 

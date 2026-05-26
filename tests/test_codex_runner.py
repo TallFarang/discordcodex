@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from discordcodex.codex_runner import CodexRunner
+from discordcodex.codex_runner import CodexProgress, CodexRunner
 from discordcodex.config import ProjectConfig
 
 
@@ -151,6 +151,100 @@ class CodexRunnerTests(unittest.TestCase):
 
             self.assertIn("args=exec resume --json --full-auto 019d8056-e1a1-7b20-a367-c7459e072546", result.output)
             self.assertIn("prompt=continue", result.output)
+
+    def test_streams_progress_callback_and_preserves_complete_output(self):
+        asyncio.run(self._stream_progress_and_output())
+
+    async def _stream_progress_and_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project_dir = root / "project"
+            project_dir.mkdir()
+            fake_codex = root / "fake_codex.py"
+            fake_codex.write_text(
+                "import json, sys, time\n"
+                "print(json.dumps({'type': 'item.started', 'item': {'type': 'tool_call', 'name': 'shell_command'}}), flush=True)\n"
+                "time.sleep(0.05)\n"
+                "print('not json', flush=True)\n"
+                "print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': 'done'}}), flush=True)\n",
+                encoding="utf-8",
+            )
+            project = ProjectConfig(
+                channel_id=TEST_CHANNEL_ID,
+                name="demo",
+                safe_name="demo",
+                cwd=project_dir,
+                codex_home=None,
+                timeout_seconds=5,
+                include_recent_messages=0,
+                codex_args=["--full-auto"],
+                max_output_chars_per_message=1800,
+                persistent_session=True,
+            )
+            runner = CodexRunner(codex_bin=os.sys.executable)
+            progress_events: list[CodexProgress] = []
+
+            async def progress_callback(progress: CodexProgress) -> None:
+                progress_events.append(progress)
+
+            result = await runner.run(
+                project=project,
+                prompt="hello",
+                extra_args=[str(fake_codex)],
+                timeout_seconds=5,
+                progress_callback=progress_callback,
+            )
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertIn("not json", result.output)
+            self.assertEqual(result.assistant_response, "done")
+            self.assertIn(
+                CodexProgress(message="Codex is running a command...", kind="command"),
+                progress_events,
+            )
+            self.assertIn(
+                CodexProgress(message="Codex is preparing a response...", kind="response"),
+                progress_events,
+            )
+
+    def test_timeout_preserves_partial_streamed_output(self):
+        asyncio.run(self._timeout_preserves_partial_output())
+
+    async def _timeout_preserves_partial_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project_dir = root / "project"
+            project_dir.mkdir()
+            fake_codex = root / "fake_codex.py"
+            fake_codex.write_text(
+                "import time\n"
+                "print('before timeout', flush=True)\n"
+                "time.sleep(10)\n",
+                encoding="utf-8",
+            )
+            project = ProjectConfig(
+                channel_id=TEST_CHANNEL_ID,
+                name="demo",
+                safe_name="demo",
+                cwd=project_dir,
+                codex_home=None,
+                timeout_seconds=1,
+                include_recent_messages=0,
+                codex_args=["--full-auto"],
+                max_output_chars_per_message=1800,
+                persistent_session=True,
+            )
+            runner = CodexRunner(codex_bin=os.sys.executable, cancel_grace_seconds=0.2)
+
+            result = await runner.run(
+                project=project,
+                prompt="hello",
+                extra_args=[str(fake_codex)],
+                timeout_seconds=1,
+            )
+
+            self.assertTrue(result.timed_out)
+            self.assertIn("before timeout", result.output)
 
 
 if __name__ == "__main__":
