@@ -60,6 +60,27 @@ configure_codex_model() {
     printf 'Updated Codex model to %s in %s.\n' "$requested_model" "$CODEX_CONFIG_FILE" >&2
 }
 
+configure_git_safe_directories() {
+    safe_directories="${DISCORDCODEX_GIT_SAFE_DIRECTORIES:-}"
+    if [ -z "$safe_directories" ]; then
+        return
+    fi
+
+    mkdir -p "$(dirname "$GIT_CONFIG_FILE")"
+    if [ ! -f "$GIT_CONFIG_FILE" ]; then
+        : > "$GIT_CONFIG_FILE"
+    fi
+    if ! grep -qx '\[safe\]' "$GIT_CONFIG_FILE"; then
+        printf '[safe]\n' >> "$GIT_CONFIG_FILE"
+    fi
+    for directory in $safe_directories; do
+        if ! grep -Fqx "	directory = $directory" "$GIT_CONFIG_FILE"; then
+            printf '\tdirectory = %s\n' "$directory" >> "$GIT_CONFIG_FILE"
+        fi
+    done
+    export GIT_CONFIG_GLOBAL="$GIT_CONFIG_FILE"
+}
+
 GITHUB_TOKEN_VALUE="${DISCORDCODEX_GITHUB_TOKEN:-}"
 if [ -z "$GITHUB_TOKEN_VALUE" ] && [ -n "${DISCORDCODEX_GITHUB_TOKEN_FILE:-}" ]; then
     GITHUB_TOKEN_VALUE="$(read_secret_file "$DISCORDCODEX_GITHUB_TOKEN_FILE")"
@@ -86,6 +107,8 @@ EOF
     unset DISCORDCODEX_GIT_CREDENTIAL_TOKEN_FILE
     unset GITHUB_TOKEN
 fi
+configure_git_safe_directories
+unset DISCORDCODEX_GIT_SAFE_DIRECTORIES
 
 API_TOKEN="${GITHUB_TOKEN_VALUE:-${DISCORDCODEX_GITHUB_API_TOKEN:-}}"
 if [ -z "$API_TOKEN" ] && [ -n "${DISCORDCODEX_GITHUB_API_TOKEN_FILE:-}" ]; then

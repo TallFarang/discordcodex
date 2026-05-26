@@ -250,6 +250,35 @@ class DockerEntrypointTests(unittest.TestCase):
             )
             self.assertEqual(result.stdout, f"git={git_config} token=<missing> legacy=<missing>")
 
+    def test_writes_safe_directories_to_generated_git_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = os.environ.copy()
+            env.update(
+                {
+                    "DISCORDCODEX_GIT_CREDENTIAL_TOKEN": "test-github-token",
+                    "DISCORDCODEX_DATA_DIR": str(data_dir),
+                    "DISCORDCODEX_GIT_SAFE_DIRECTORIES": "/projects/discordcodex /projects/Todo",
+                }
+            )
+
+            result = subprocess.run(
+                [
+                    str(ROOT / "docker-entrypoint.sh"),
+                    "sh",
+                    "-c",
+                    "cat \"$GIT_CONFIG_GLOBAL\"",
+                ],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            self.assertIn("helper = store --file", result.stdout)
+            self.assertIn("directory = /projects/discordcodex", result.stdout)
+            self.assertIn("directory = /projects/Todo", result.stdout)
+
     def test_supports_legacy_github_token_alias_for_git_credentials(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"
